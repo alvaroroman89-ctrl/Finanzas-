@@ -58,6 +58,7 @@
   .bucket.disp .big{color:var(--green)}
   .bucket.aho .big{color:var(--blue)}
   .bucket .sub{font-size:12.5px;color:var(--muted);margin-top:8px}
+  .bucket-edit{position:absolute;top:14px;right:14px}
 
   /* KPI row */
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
@@ -140,6 +141,8 @@
     .settings-grid{grid-template-columns:1fr}
     .catrow{grid-template-columns:100px 1fr 78px}
     .bucket .big{font-size:26px}
+    table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
+    th,td{padding:7px 8px;font-size:12.5px}
   }
 </style>
 </head>
@@ -256,15 +259,15 @@ function calc(year){
     var gas=sumFilter(function(m){return m.tipo==='Gasto'&&yearOf(m)===year&&monthOf(m)===i;});
     var dep=sumFilter(function(m){return m.tipo==='Ahorro'&&yearOf(m)===year&&monthOf(m)===i;});
     var ret=sumFilter(function(m){return m.tipo==='Retiro ahorro'&&yearOf(m)===year&&monthOf(m)===i;});
-    ingMes.push(ing); gasMes.push(gas); ahoMes.push(dep-ret); dispMes.push(ing-gas);
+    ingMes.push(ing); gasMes.push(gas); ahoMes.push(dep-ret); dispMes.push(ing-gas-(dep-ret));
   }
   var ingAno=ingMes.reduce(function(a,b){return a+b;},0);
   var gasAno=gasMes.reduce(function(a,b){return a+b;},0);
   var ahoAno=ahoMes.reduce(function(a,b){return a+b;},0);
-  var dispAno=ingAno-gasAno;
+  var dispAno=ingAno-gasAno-ahoAno;
   // saldos reales (todo el historial)
   var saldoAhorro=state.saldoInicialAhorrado + sumFilter(function(m){return m.tipo==='Ahorro';}) - sumFilter(function(m){return m.tipo==='Retiro ahorro';});
-  var saldoDisp=state.saldoInicialDisponible + sumFilter(function(m){return m.tipo==='Ingreso';}) - sumFilter(function(m){return m.tipo==='Gasto';});
+  var saldoDisp=state.saldoInicialDisponible + sumFilter(function(m){return m.tipo==='Ingreso';}) - sumFilter(function(m){return m.tipo==='Gasto';}) - sumFilter(function(m){return m.tipo==='Ahorro';}) + sumFilter(function(m){return m.tipo==='Retiro ahorro';});
   // ahorro acumulado por mes hasta hoy
   var hoy=new Date(); var acumInicio=state.saldoInicialAhorrado
       + sumFilter(function(m){return m.tipo==='Ahorro'&&yearOf(m)<year;})
@@ -309,15 +312,15 @@ function renderResumen(){
 
   var html='';
   html+='<div class="buckets">'
-      + '<div class="bucket disp"><div class="eyebrow">Sueldo disponible</div><div class="big num">'+money(c.saldoDisp)+'</div><div class="sub">Saldo real en tu cuenta / efectivo hoy · independiente del ahorro</div></div>'
-      + '<div class="bucket aho"><div class="eyebrow">Ahorro</div><div class="big num">'+money(c.saldoAhorro)+'</div><div class="sub">Saldo total guardado hoy · no se mezcla con el sueldo</div></div>'
+      + '<div class="bucket disp"><div class="eyebrow">Sueldo disponible</div><div class="big num">'+money(c.saldoDisp)+'</div><div class="sub">Saldo real en tu cuenta / efectivo hoy · lo que ahorras se descuenta de aquí</div><button class="btn sec sm bucket-edit" id="aj_disp">✎ Ajustar</button></div>'
+      + '<div class="bucket aho"><div class="eyebrow">Ahorro</div><div class="big num">'+money(c.saldoAhorro)+'</div><div class="sub">Saldo total guardado hoy · no se mezcla con el sueldo</div><button class="btn sec sm bucket-edit" id="aj_aho">✎ Ajustar</button></div>'
       + '</div>';
 
   html+='<div class="kpis">'
       + kpi('Ingresos '+y,money(c.ingAno),'green')
       + kpi('Gastos '+y,money(c.gasAno),'red')
       + kpi('Ahorro neto '+y,money(c.ahoAno),'blue')
-      + kpi('Disponible '+y+' (Ing − Gas)',money(c.dispAno),'navy')
+      + kpi('Disponible '+y+' (Ing − Gas − Aho)',money(c.dispAno),'navy')
       + '</div>';
 
   // tabla mensual
@@ -351,6 +354,18 @@ function renderResumen(){
   html+='</div>';
 
   el.innerHTML=html;
+  document.getElementById('aj_disp').addEventListener('click',function(){ ajustarSaldo('disp',c.saldoDisp); });
+  document.getElementById('aj_aho').addEventListener('click',function(){ ajustarSaldo('aho',c.saldoAhorro); });
+}
+function ajustarSaldo(cual,actual){
+  var nombre=cual==='disp'?'Sueldo disponible':'Ahorro';
+  var v=prompt('Escribe el saldo REAL de "'+nombre+'" que tienes hoy (sin puntos ni signo $).\nActual según la app: '+money(actual),Math.round(actual));
+  if(v===null) return;
+  var nuevo=Math.round(+String(v).replace(/[^\d-]/g,''));
+  if(isNaN(nuevo)){ toast('Monto no válido'); return; }
+  var delta=nuevo-Math.round(actual);
+  if(cual==='disp') state.saldoInicialDisponible+=delta; else state.saldoInicialAhorrado+=delta;
+  save(); renderAll(); toast(nombre+' ajustado a '+money(nuevo));
 }
 function kpi(label,val,cls){
   return '<div class="kpi"><div class="eyebrow">'+esc(label)+'</div><div class="v '+cls+' num">'+val+'</div></div>';
