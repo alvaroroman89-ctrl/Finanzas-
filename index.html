@@ -323,12 +323,13 @@ function renderResumen(){
       + kpi('Ingresos '+y,money(c.ingAno),'green')
       + kpi('Gastos '+y,money(c.gasAno),'red')
       + kpi('Ahorro neto '+y,money(c.ahoAno),'blue')
-      + kpi('Disponible '+y+' (Ing − Gas − Aho)',money(c.dispAno),'navy')
+      + kpi('Resultado del año '+y+' (Ing − Gas − Aho)',money(c.dispAno),'navy')
       + '</div>';
+  html+='<div class="savings-note">Los cuadros de arriba son <strong>saldos</strong>: cuánta plata tienes hoy en total. Los cuatro de aquí miden solo el <strong>año '+y+'</strong>: cuánto entró, salió y quedó en ese periodo. Por eso el resultado del año no coincide con el sueldo disponible: la diferencia es lo que ya tenías antes de este año.</div>';
 
   // tabla mensual
   html+='<div class="card"><h2>Detalle mensual '+y+'</h2><div class="cap">Tasa de ahorro del año: <strong>'+pct(tasaAhorro)+'</strong></div>';
-  html+='<table><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ahorro neto</th><th>Disponible</th><th>Ahorro acum.</th></tr></thead><tbody>';
+  html+='<table><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ahorro neto</th><th>Resultado</th><th>Ahorro acum.</th></tr></thead><tbody>';
   for(var i=0;i<12;i++){
     var disp=c.dispMes[i];
     html+='<tr><td>'+MESES[i]+'</td>'
