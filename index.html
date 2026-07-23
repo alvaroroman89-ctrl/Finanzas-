@@ -128,6 +128,17 @@
   .chip button:hover{color:var(--red)}
   .addcat{display:flex;gap:8px;margin-top:12px}
 
+  .visor{position:fixed;inset:0;background:rgba(10,20,40,.72);z-index:60;display:none;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto}
+  .visor.show{display:flex}
+  .visor-box{background:var(--surface);border-radius:14px;max-width:720px;width:100%;padding:16px;box-shadow:var(--shadow);margin:auto}
+  .visor-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px}
+  .visor-top h3{margin:0;font-size:15px;line-height:1.45}
+  .vitem{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px}
+  .vhead{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:8px;flex-wrap:wrap}
+  .vimg{width:100%;border-radius:8px;border:1px solid var(--line2);display:block;cursor:zoom-in}
+  .vimg.zoom{width:auto;max-width:none;cursor:zoom-out}
+  .vitem{overflow:auto}
+  @media print{ .visor,.toast{display:none!important} }
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.25s;z-index:50}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
@@ -178,6 +189,17 @@
   <section id="ajustes" class="view"></section>
 </main>
 
+<div class="visor" id="visor">
+  <div class="visor-box">
+    <div class="visor-top">
+      <div><h3 id="visor_titulo"></h3><div class="cap" id="visor_sub"></div></div>
+      <button class="btn sec sm" id="visor_cerrar">Cerrar</button>
+    </div>
+    <div id="visor_body"></div>
+    <div style="margin-top:6px"><button class="btn sec" id="visor_add">📎 Agregar otro comprobante</button></div>
+    <div class="cap" style="margin-top:8px">🖨 imprimir o guardar como PDF · ⬇ descargar · toca una foto para ampliarla</div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -234,6 +256,10 @@ function normalize(s){
   s.categorias.ahorro=s.categorias.ahorro||DEFAULT.categorias.ahorro.slice();
   s.medios=s.medios||DEFAULT.medios.slice();
   s.movimientos=s.movimientos||[];
+  s.movimientos.forEach(function(m){
+    if(m.adj && !m.adjs){ m.adjs=[{aid:m.id,nombre:m.adj.nombre,mime:m.adj.mime,kb:m.adj.kb||0}]; delete m.adj; }
+    if(!m.adjs) m.adjs=[];
+  });
   return s;
 }
 function save(){
@@ -440,28 +466,96 @@ function comprimirImagen(file,cb){
   };
   r.readAsDataURL(file);
 }
-function guardarAdjunto(id,nombre,mime,dataUrl){
+function guardarAdjunto(mid,nombre,mime,dataUrl){
   var kb=Math.round(dataUrl.length*3/4/1024);
-  adjPut({id:id,nombre:nombre,mime:mime,data:dataUrl}).then(function(){
-    var m=state.movimientos.find(function(x){return x.id===id;});
-    if(m){ m.adj={nombre:nombre,mime:mime,kb:kb}; save(); }
-    renderMovimientos(); toast('Comprobante guardado ('+kb+' KB)');
+  var aid=mid+'_'+Date.now()+'_'+Math.floor(Math.random()*1000);
+  adjPut({id:aid,mid:mid,nombre:nombre,mime:mime,data:dataUrl}).then(function(){
+    var m=state.movimientos.find(function(x){return x.id===mid;});
+    if(m){ m.adjs=m.adjs||[]; m.adjs.push({aid:aid,nombre:nombre,mime:mime,kb:kb}); save(); }
+    renderMovimientos();
+    if(_visorMid===mid) abrirVisor(mid);
+    toast('Comprobante guardado ('+kb+' KB)');
   }).catch(function(){ toast('No se pudo guardar el comprobante'); });
 }
-function descargarAdjunto(id){
-  adjGet(id).then(function(rec){
+function descargarAdjunto(aid){
+  adjGet(aid).then(function(rec){
     if(!rec){ toast('Comprobante no encontrado en este dispositivo'); return; }
     var a=document.createElement('a'); a.href=rec.data; a.download=rec.nombre; a.click();
-  }).catch(function(){ toast('No se pudo abrir el comprobante'); });
+  }).catch(function(){ toast('No se pudo descargar'); });
 }
-function quitarAdjunto(id){
-  if(!confirm('¿Quitar el comprobante de este movimiento?')) return;
-  adjDel(id).then(function(){
-    var m=state.movimientos.find(function(x){return x.id===id;});
-    if(m){ delete m.adj; save(); }
-    renderMovimientos(); toast('Comprobante quitado');
+function quitarAdjunto(mid,aid){
+  if(!confirm('¿Quitar este comprobante? El movimiento no se borra.')) return;
+  adjDel(aid).then(function(){
+    var m=state.movimientos.find(function(x){return x.id===mid;});
+    if(m){ m.adjs=(m.adjs||[]).filter(function(a){return a.aid!==aid;}); save(); }
+    renderMovimientos();
+    if(_visorMid===mid){ var mm=state.movimientos.find(function(x){return x.id===mid;}); if(mm&&mm.adjs.length) abrirVisor(mid); else cerrarVisor(); }
+    toast('Comprobante quitado');
   });
 }
+
+/* ===== Visor de comprobantes ===== */
+var _visorMid=null;
+function abrirVisor(mid){
+  _visorMid=mid;
+  var m=state.movimientos.find(function(x){return x.id===mid;});
+  if(!m) return;
+  var ov=document.getElementById('visor');
+  var body=document.getElementById('visor_body');
+  document.getElementById('visor_titulo').innerHTML=fmtFecha(m.fecha)+' · '+esc(m.categoria)+' · <strong>'+money(m.monto)+'</strong><br><span style="font-weight:400">'+esc(m.descripcion||'')+'</span>';
+  document.getElementById('visor_sub').textContent=(m.adjs||[]).length+' comprobante'+((m.adjs||[]).length===1?'':'s')+' en este movimiento';
+  body.innerHTML='<div class="cap">Cargando…</div>';
+  ov.classList.add('show');
+  Promise.all((m.adjs||[]).map(function(a){ return adjGet(a.aid).then(function(r){ return {a:a,r:r}; }); })).then(function(items){
+    var html='';
+    items.forEach(function(it,idx){
+      var a=it.a, r=it.r;
+      html+='<div class="vitem"><div class="vhead"><span>'+(idx+1)+'. '+esc(a.nombre)+' · '+(a.kb||0)+' KB</span>'
+          + '<span class="row-actions"><button class="btn sec sm" title="Imprimir o guardar como PDF" data-vpr="'+a.aid+'">🖨</button><button class="btn sec sm" title="Descargar" data-vdl="'+a.aid+'">⬇</button><button class="btn danger sm" title="Quitar" data-vdel="'+a.aid+'">✕</button></span></div>';
+      if(!r){ html+='<div class="cap">Este archivo ya no está en el dispositivo (quizá fue archivado).</div>'; }
+      else if(r.mime==='application/pdf'){ html+='<div class="cap">Documento PDF · usa el botón ⬇ para abrirlo</div>'; }
+      else { html+='<img class="vimg" src="'+r.data+'" alt="'+esc(a.nombre)+'">'; }
+      html+='</div>';
+    });
+    if(!items.length) html='<div class="cap">Aún no hay comprobantes en este movimiento.</div>';
+    body.innerHTML=html;
+    body.querySelectorAll('[data-vdl]').forEach(function(b){b.addEventListener('click',function(){descargarAdjunto(b.getAttribute('data-vdl'));});});
+    body.querySelectorAll('[data-vpr]').forEach(function(b){b.addEventListener('click',function(){imprimirAdjunto(mid,b.getAttribute('data-vpr'));});});
+    body.querySelectorAll('.vimg').forEach(function(im){ im.addEventListener('click',function(){ im.classList.toggle('zoom'); }); });
+    body.querySelectorAll('[data-vdel]').forEach(function(b){b.addEventListener('click',function(){quitarAdjunto(mid,b.getAttribute('data-vdel'));});});
+  });
+}
+function imprimirAdjunto(mid,aid){
+  var m=state.movimientos.find(function(x){return x.id===mid;});
+  adjGet(aid).then(function(rec){
+    if(!rec){ toast('Comprobante no disponible en este dispositivo'); return; }
+    if(rec.mime==='application/pdf'){ toast('Los PDF se imprimen desde el lector; descargando…'); descargarAdjunto(aid); return; }
+    var enc=m?('<div class="enc"><strong>'+fmtFecha(m.fecha)+'</strong> · '+esc(m.tipo)+' · '+esc(m.categoria)+' · <strong>'+money(m.monto)+'</strong>'
+             +(m.descripcion?'<br>'+esc(m.descripcion):'')+(m.medio?'<br>Medio de pago: '+esc(m.medio):'')+'</div>'):'';
+    var doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comprobante</title><style>'
+      +'@page{margin:12mm}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111}'
+      +'.enc{font-size:13px;line-height:1.5;border-bottom:1px solid #999;padding-bottom:8px;margin-bottom:10px}'
+      +'img{max-width:100%;display:block;margin:0 auto}'
+      +'</style></head><body>'+enc+'<img src="'+rec.data+'"></body></html>';
+    var ifr=document.getElementById('print_frame');
+    if(ifr&&ifr.parentNode) ifr.parentNode.removeChild(ifr);
+    ifr=document.createElement('iframe');
+    ifr.id='print_frame';
+    ifr.style.position='fixed'; ifr.style.right='0'; ifr.style.bottom='0';
+    ifr.style.width='0'; ifr.style.height='0'; ifr.style.border='0';
+    document.body.appendChild(ifr);
+    ifr.onload=function(){
+      try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }
+      catch(e){
+        var w=window.open('','_blank');
+        if(w){ w.document.write(doc); w.document.close(); w.focus(); setTimeout(function(){ w.print(); },400); }
+        else { toast('No se pudo abrir la impresión; usa ⬇ para descargar'); }
+      }
+    };
+    ifr.srcdoc=doc;
+  }).catch(function(){ toast('No se pudo preparar la impresión'); });
+}
+function cerrarVisor(){ _visorMid=null; document.getElementById('visor').classList.remove('show'); }
 
 function renderMovimientos(){
   var el=document.getElementById('movimientos');
@@ -499,7 +593,9 @@ function renderMovimientos(){
          +'<td class="muted">'+esc(m.descripcion)+'</td>'
          +'<td class="muted">'+esc(m.medio)+'</td>'
          +'<td class="num" style="color:'+colorTipo(m.tipo)+';font-weight:600">'+money(m.monto)+'</td>'
-         +'<td>'+(m.adj?'<div class="row-actions"><button class="btn sec sm" title="Descargar comprobante" data-adjver="'+m.id+'">⬇</button><button class="btn danger sm" title="Quitar comprobante" data-adjdel="'+m.id+'">✕</button></div>':'<button class="btn sec sm" title="Adjuntar comprobante" data-adjadd="'+m.id+'">📎</button>')+'</td>'
+         +'<td>'+((m.adjs&&m.adjs.length)
+             ?'<button class="btn sec sm" title="Ver comprobantes" data-adjver="'+m.id+'">📎 '+m.adjs.length+'</button>'
+             :'<button class="btn sec sm" title="Adjuntar comprobante" data-adjadd="'+m.id+'">📎</button>')+'</td>'
          +'<td><div class="row-actions"><button class="btn sec sm" data-edit="'+m.id+'">Editar</button><button class="btn danger sm" data-del="'+m.id+'">Borrar</button></div></td></tr>';
     });
     html+='</tbody></table>';
@@ -521,8 +617,7 @@ function renderMovimientos(){
   el.querySelectorAll('[data-del]').forEach(function(b){b.addEventListener('click',function(){delMov(b.getAttribute('data-del'));});});
   el.querySelectorAll('[data-edit]').forEach(function(b){b.addEventListener('click',function(){editMov(b.getAttribute('data-edit'));});});
   el.querySelectorAll('[data-adjadd]').forEach(function(b){b.addEventListener('click',function(){pedirAdjunto(b.getAttribute('data-adjadd'));});});
-  el.querySelectorAll('[data-adjver]').forEach(function(b){b.addEventListener('click',function(){descargarAdjunto(b.getAttribute('data-adjver'));});});
-  el.querySelectorAll('[data-adjdel]').forEach(function(b){b.addEventListener('click',function(){quitarAdjunto(b.getAttribute('data-adjdel'));});});
+  el.querySelectorAll('[data-adjver]').forEach(function(b){b.addEventListener('click',function(){abrirVisor(b.getAttribute('data-adjver'));});});
 }
 function fld(label,inner,wide){ return '<div class="field'+(wide?' wide':'')+'"><label class="fl">'+label+'</label>'+inner+'</div>'; }
 function fmtFecha(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
@@ -543,8 +638,9 @@ function addMov(){
 }
 function delMov(id){
   if(!confirm('¿Borrar este movimiento?')) return;
+  var _victim=state.movimientos.find(function(m){return m.id===id;});
+  try{ ((_victim&&_victim.adjs)||[]).forEach(function(a){ adjDel(a.aid); }); }catch(e){}
   state.movimientos=state.movimientos.filter(function(m){return m.id!==id;});
-  try{ adjDel(id); }catch(e){}
   save(); toast('Movimiento borrado'); renderMovimientos();
 }
 function editMov(id){
@@ -699,9 +795,11 @@ function cargarStatsAdjuntos(){
 function archivarComprobantes(meses){
   var corte=new Date(); corte.setMonth(corte.getMonth()-meses);
   var corteISO=corte.toISOString().slice(0,10);
-  var objetivo=state.movimientos.filter(function(m){ return m.adj && (meses===0 || m.fecha<corteISO); });
+  var objetivo=state.movimientos.filter(function(m){ return m.adjs && m.adjs.length && (meses===0 || m.fecha<corteISO); });
   if(objetivo.length===0){ toast(meses===0?'No hay comprobantes para archivar':'No hay comprobantes de más de '+meses+' meses'); return; }
-  Promise.all(objetivo.map(function(m){ return adjGet(m.id).then(function(rec){ return {m:m,rec:rec}; }); })).then(function(pares){
+  var tareas=[];
+  objetivo.forEach(function(m){ m.adjs.forEach(function(a){ tareas.push(adjGet(a.aid).then(function(rec){ return {m:m,a:a,rec:rec}; })); }); });
+  Promise.all(tareas).then(function(pares){
     pares=pares.filter(function(p){return p.rec;});
     if(pares.length===0){ toast('No se encontraron los archivos en este dispositivo'); return; }
     var doc='<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -721,7 +819,7 @@ function archivarComprobantes(meses){
     downloadBlob(new Blob([doc],{type:'text/html'}),'comprobantes_archivo_'+todayISO()+'.html');
     setTimeout(function(){
       if(confirm('Se descargó el archivo con '+pares.length+' comprobante(s).\n\nGuárdalo en un lugar seguro ANTES de continuar.\n\n¿Eliminar ahora esos comprobantes de la app para liberar espacio? (Los movimientos no se borran)')){
-        Promise.all(pares.map(function(p){ return adjDel(p.m.id).then(function(){ delete p.m.adj; }); })).then(function(){
+        Promise.all(pares.map(function(p){ return adjDel(p.a.aid).then(function(){ p.m.adjs=(p.m.adjs||[]).filter(function(x){return x.aid!==p.a.aid;}); }); })).then(function(){
           save(); renderAll(); toast(pares.length+' comprobante(s) archivados y espacio liberado');
         });
       } else { toast('Comprobantes descargados; siguen también en la app'); }
@@ -777,6 +875,11 @@ function buildYearSel(){
   var sel=document.getElementById('yearSel');
   sel.innerHTML=list.map(function(y){return '<option value="'+y+'"'+(y===state.year?' selected':'')+'>'+y+'</option>';}).join('');
 }
+function initVisor(){
+  var c=document.getElementById('visor_cerrar'); if(c) c.addEventListener('click',cerrarVisor);
+  var a=document.getElementById('visor_add'); if(a) a.addEventListener('click',function(){ if(_visorMid) pedirAdjunto(_visorMid); });
+  var ov=document.getElementById('visor'); if(ov) ov.addEventListener('click',function(e){ if(e.target===ov) cerrarVisor(); });
+}
 function renderAll(){ renderResumen(); renderMovimientos(); renderCierre(); renderAjustes(); }
 
 document.getElementById('yearSel').addEventListener('change',function(){ state.year=+this.value; save(); renderAll(); });
@@ -789,6 +892,7 @@ document.querySelectorAll('.tab').forEach(function(t){
   });
 });
 
+initVisor();
 buildYearSel();
 renderAll();
 </script>
