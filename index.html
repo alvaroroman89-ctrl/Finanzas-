@@ -59,6 +59,7 @@
   .bucket.aho .big{color:var(--blue)}
   .bucket .sub{font-size:12.5px;color:var(--muted);margin-top:8px}
   .bucket-edit{position:absolute;top:14px;right:14px}
+  .bucket-actions{position:absolute;top:14px;right:14px;display:flex;gap:6px}
 
   /* KPI row */
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
@@ -209,7 +210,9 @@ var DEFAULT = {
   ]
 };
 
-var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro"];
+var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
+function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
+function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -257,8 +260,8 @@ function calc(year){
   for(var i=1;i<=12;i++){
     var ing=sumFilter(function(m){return m.tipo==='Ingreso'&&yearOf(m)===year&&monthOf(m)===i;});
     var gas=sumFilter(function(m){return m.tipo==='Gasto'&&yearOf(m)===year&&monthOf(m)===i;});
-    var dep=sumFilter(function(m){return m.tipo==='Ahorro'&&yearOf(m)===year&&monthOf(m)===i;});
-    var ret=sumFilter(function(m){return m.tipo==='Retiro ahorro'&&yearOf(m)===year&&monthOf(m)===i;});
+    var dep=sumFilter(function(m){return esDeposito(m.tipo)&&yearOf(m)===year&&monthOf(m)===i;});
+    var ret=sumFilter(function(m){return esRetiro(m.tipo)&&yearOf(m)===year&&monthOf(m)===i;});
     ingMes.push(ing); gasMes.push(gas); ahoMes.push(dep-ret); dispMes.push(ing-gas-(dep-ret));
   }
   var ingAno=ingMes.reduce(function(a,b){return a+b;},0);
@@ -266,12 +269,12 @@ function calc(year){
   var ahoAno=ahoMes.reduce(function(a,b){return a+b;},0);
   var dispAno=ingAno-gasAno-ahoAno;
   // saldos reales (todo el historial)
-  var saldoAhorro=state.saldoInicialAhorrado + sumFilter(function(m){return m.tipo==='Ahorro';}) - sumFilter(function(m){return m.tipo==='Retiro ahorro';});
-  var saldoDisp=state.saldoInicialDisponible + sumFilter(function(m){return m.tipo==='Ingreso';}) - sumFilter(function(m){return m.tipo==='Gasto';}) - sumFilter(function(m){return m.tipo==='Ahorro';}) + sumFilter(function(m){return m.tipo==='Retiro ahorro';});
+  var saldoAhorro=state.saldoInicialAhorrado + sumFilter(function(m){return esDeposito(m.tipo);}) - sumFilter(function(m){return esRetiro(m.tipo);});
+  var saldoDisp=state.saldoInicialDisponible + sumFilter(function(m){return m.tipo==='Ingreso';}) - sumFilter(function(m){return m.tipo==='Gasto';}) - sumFilter(function(m){return esDeposito(m.tipo);}) + sumFilter(function(m){return esRetiro(m.tipo);});
   // ahorro acumulado por mes hasta hoy
   var hoy=new Date(); var acumInicio=state.saldoInicialAhorrado
-      + sumFilter(function(m){return m.tipo==='Ahorro'&&yearOf(m)<year;})
-      - sumFilter(function(m){return m.tipo==='Retiro ahorro'&&yearOf(m)<year;});
+      + sumFilter(function(m){return esDeposito(m.tipo)&&yearOf(m)<year;})
+      - sumFilter(function(m){return esRetiro(m.tipo)&&yearOf(m)<year;});
   var acum=[],run=acumInicio;
   for(var j=0;j<12;j++){
     run+=ahoMes[j];
@@ -312,8 +315,8 @@ function renderResumen(){
 
   var html='';
   html+='<div class="buckets">'
-      + '<div class="bucket disp"><div class="eyebrow">Sueldo disponible</div><div class="big num">'+money(c.saldoDisp)+'</div><div class="sub">Saldo real en tu cuenta / efectivo hoy · lo que ahorras se descuenta de aquí</div><button class="btn sec sm bucket-edit" id="aj_disp">✎ Ajustar</button></div>'
-      + '<div class="bucket aho"><div class="eyebrow">Ahorro</div><div class="big num">'+money(c.saldoAhorro)+'</div><div class="sub">Saldo total guardado hoy · no se mezcla con el sueldo</div><button class="btn sec sm bucket-edit" id="aj_aho">✎ Ajustar</button></div>'
+      + '<div class="bucket disp"><div class="eyebrow">Sueldo disponible</div><div class="big num">'+verSaldo(c.saldoDisp)+'</div><div class="sub">Saldo real en tu cuenta / efectivo hoy · lo que ahorras se descuenta de aquí</div><div class="bucket-actions"><button class="btn sec sm" id="ojo_disp" title="Ocultar / mostrar montos">'+(state.ocultarSaldos?'🙈':'👁')+'</button><button class="btn sec sm" id="aj_disp">✎ Ajustar</button></div></div>'
+      + '<div class="bucket aho"><div class="eyebrow">Ahorro</div><div class="big num">'+verSaldo(c.saldoAhorro)+'</div><div class="sub">Saldo total guardado hoy · no se mezcla con el sueldo</div><div class="bucket-actions"><button class="btn sec sm" id="ojo_aho" title="Ocultar / mostrar montos">'+(state.ocultarSaldos?'🙈':'👁')+'</button><button class="btn sec sm" id="aj_aho">✎ Ajustar</button></div></div>'
       + '</div>';
 
   html+='<div class="kpis">'
@@ -356,7 +359,11 @@ function renderResumen(){
   el.innerHTML=html;
   document.getElementById('aj_disp').addEventListener('click',function(){ ajustarSaldo('disp',c.saldoDisp); });
   document.getElementById('aj_aho').addEventListener('click',function(){ ajustarSaldo('aho',c.saldoAhorro); });
+  document.getElementById('ojo_disp').addEventListener('click',toggleOcultar);
+  document.getElementById('ojo_aho').addEventListener('click',toggleOcultar);
 }
+function verSaldo(v){ return state.ocultarSaldos ? '$ ••••••' : money(v); }
+function toggleOcultar(){ state.ocultarSaldos=!state.ocultarSaldos; save(); renderAll(); }
 function ajustarSaldo(cual,actual){
   var nombre=cual==='disp'?'Sueldo disponible':'Ahorro';
   var v=prompt('Escribe el saldo REAL de "'+nombre+'" que tienes hoy (sin puntos ni signo $).\nActual según la app: '+money(actual),Math.round(actual));
@@ -373,6 +380,88 @@ function kpi(label,val,cls){
 
 /* ---------- render: MOVIMIENTOS ---------- */
 var filtro={mes:'todos',tipo:'todos'};
+
+/* ===== Comprobantes (IndexedDB) ===== */
+var _adjdb=null;
+function adjDB(){
+  return new Promise(function(res,rej){
+    if(!window.indexedDB){ rej(new Error('sin soporte')); return; }
+    if(_adjdb){ res(_adjdb); return; }
+    var rq=indexedDB.open('finanzas_adjuntos',1);
+    rq.onupgradeneeded=function(){ rq.result.createObjectStore('adj',{keyPath:'id'}); };
+    rq.onsuccess=function(){ _adjdb=rq.result; res(_adjdb); };
+    rq.onerror=function(){ rej(rq.error); };
+  });
+}
+function adjPut(rec){ return adjDB().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('adj','readwrite'); tx.objectStore('adj').put(rec); tx.oncomplete=res; tx.onerror=function(){rej(tx.error);}; }); }); }
+function adjGet(id){ return adjDB().then(function(db){ return new Promise(function(res,rej){ var rq=db.transaction('adj').objectStore('adj').get(id); rq.onsuccess=function(){res(rq.result||null);}; rq.onerror=function(){rej(rq.error);}; }); }); }
+function adjDel(id){ return adjDB().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('adj','readwrite'); tx.objectStore('adj').delete(id); tx.oncomplete=res; tx.onerror=function(){rej(tx.error);}; }); }); }
+function adjAll(){ return adjDB().then(function(db){ return new Promise(function(res,rej){ var rq=db.transaction('adj').objectStore('adj').getAll(); rq.onsuccess=function(){res(rq.result||[]);}; rq.onerror=function(){rej(rq.error);}; }); }); }
+function adjClear(){ return adjDB().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction('adj','readwrite'); tx.objectStore('adj').clear(); tx.oncomplete=res; tx.onerror=function(){rej(tx.error);}; }); }); }
+
+var _adjTarget=null;
+function pedirAdjunto(id){
+  _adjTarget=id;
+  var inp=document.getElementById('adj_file');
+  if(!inp){
+    inp=document.createElement('input'); inp.type='file'; inp.id='adj_file';
+    inp.accept='image/*,application/pdf'; inp.style.display='none';
+    inp.addEventListener('change',adjuntarArchivo);
+    document.body.appendChild(inp);
+  }
+  inp.value=''; inp.click();
+}
+function adjuntarArchivo(e){
+  var f=e.target.files[0]; if(!f||!_adjTarget) return;
+  var id=_adjTarget; _adjTarget=null;
+  if(f.type==='application/pdf'){
+    if(f.size>4*1024*1024){ toast('PDF muy pesado (máx 4 MB)'); return; }
+    var r=new FileReader();
+    r.onload=function(){ guardarAdjunto(id,f.name,f.type,r.result); };
+    r.readAsDataURL(f);
+  } else if(f.type.indexOf('image/')===0){
+    comprimirImagen(f,function(dataUrl){ guardarAdjunto(id,f.name.replace(/\.[^.]+$/,'')+'.jpg','image/jpeg',dataUrl); });
+  } else { toast('Solo imágenes o PDF'); }
+}
+function comprimirImagen(file,cb){
+  var r=new FileReader();
+  r.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+      var MAX=1400, w=img.width, h=img.height;
+      if(w>MAX||h>MAX){ var k=Math.min(MAX/w,MAX/h); w=Math.round(w*k); h=Math.round(h*k); }
+      var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      cb(cv.toDataURL('image/jpeg',0.72));
+    };
+    img.onerror=function(){ toast('No se pudo leer la imagen'); };
+    img.src=r.result;
+  };
+  r.readAsDataURL(file);
+}
+function guardarAdjunto(id,nombre,mime,dataUrl){
+  var kb=Math.round(dataUrl.length*3/4/1024);
+  adjPut({id:id,nombre:nombre,mime:mime,data:dataUrl}).then(function(){
+    var m=state.movimientos.find(function(x){return x.id===id;});
+    if(m){ m.adj={nombre:nombre,mime:mime,kb:kb}; save(); }
+    renderMovimientos(); toast('Comprobante guardado ('+kb+' KB)');
+  }).catch(function(){ toast('No se pudo guardar el comprobante'); });
+}
+function descargarAdjunto(id){
+  adjGet(id).then(function(rec){
+    if(!rec){ toast('Comprobante no encontrado en este dispositivo'); return; }
+    var a=document.createElement('a'); a.href=rec.data; a.download=rec.nombre; a.click();
+  }).catch(function(){ toast('No se pudo abrir el comprobante'); });
+}
+function quitarAdjunto(id){
+  if(!confirm('¿Quitar el comprobante de este movimiento?')) return;
+  adjDel(id).then(function(){
+    var m=state.movimientos.find(function(x){return x.id===id;});
+    if(m){ delete m.adj; save(); }
+    renderMovimientos(); toast('Comprobante quitado');
+  });
+}
+
 function renderMovimientos(){
   var el=document.getElementById('movimientos');
   var y=state.year;
@@ -401,7 +490,7 @@ function renderMovimientos(){
       .sort(function(a,b){return a.fecha<b.fecha?1:-1;});
   if(list.length===0){ html+='<div class="empty">No hay movimientos con estos filtros.</div>'; }
   else{
-    html+='<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th>Monto</th><th></th></tr></thead><tbody>';
+    html+='<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th>Monto</th><th>Comp.</th><th></th></tr></thead><tbody>';
     list.forEach(function(m){
       html+='<tr><td class="num">'+fmtFecha(m.fecha)+'</td>'
          +'<td>'+pill(m.tipo)+'</td>'
@@ -409,6 +498,7 @@ function renderMovimientos(){
          +'<td class="muted">'+esc(m.descripcion)+'</td>'
          +'<td class="muted">'+esc(m.medio)+'</td>'
          +'<td class="num" style="color:'+colorTipo(m.tipo)+';font-weight:600">'+money(m.monto)+'</td>'
+         +'<td>'+(m.adj?'<div class="row-actions"><button class="btn sec sm" title="Descargar comprobante" data-adjver="'+m.id+'">⬇</button><button class="btn danger sm" title="Quitar comprobante" data-adjdel="'+m.id+'">✕</button></div>':'<button class="btn sec sm" title="Adjuntar comprobante" data-adjadd="'+m.id+'">📎</button>')+'</td>'
          +'<td><div class="row-actions"><button class="btn sec sm" data-edit="'+m.id+'">Editar</button><button class="btn danger sm" data-del="'+m.id+'">Borrar</button></div></td></tr>';
     });
     html+='</tbody></table>';
@@ -429,11 +519,14 @@ function renderMovimientos(){
   document.getElementById('flt_tipo').addEventListener('change',function(){filtro.tipo=this.value;renderMovimientos();});
   el.querySelectorAll('[data-del]').forEach(function(b){b.addEventListener('click',function(){delMov(b.getAttribute('data-del'));});});
   el.querySelectorAll('[data-edit]').forEach(function(b){b.addEventListener('click',function(){editMov(b.getAttribute('data-edit'));});});
+  el.querySelectorAll('[data-adjadd]').forEach(function(b){b.addEventListener('click',function(){pedirAdjunto(b.getAttribute('data-adjadd'));});});
+  el.querySelectorAll('[data-adjver]').forEach(function(b){b.addEventListener('click',function(){descargarAdjunto(b.getAttribute('data-adjver'));});});
+  el.querySelectorAll('[data-adjdel]').forEach(function(b){b.addEventListener('click',function(){quitarAdjunto(b.getAttribute('data-adjdel'));});});
 }
 function fld(label,inner,wide){ return '<div class="field'+(wide?' wide':'')+'"><label class="fl">'+label+'</label>'+inner+'</div>'; }
 function fmtFecha(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
-function pill(t){ var m={'Ingreso':'ing','Gasto':'gas','Ahorro':'aho','Retiro ahorro':'ret'}; return '<span class="pill '+m[t]+'">'+t+'</span>'; }
-function colorTipo(t){ return {'Ingreso':'var(--green)','Gasto':'var(--red)','Ahorro':'var(--blue)','Retiro ahorro':'var(--amber)'}[t]; }
+function pill(t){ var cls = t==='Ingreso'?'ing' : t==='Gasto'?'gas' : esDeposito(t)?'aho' : 'ret'; return '<span class="pill '+cls+'">'+t+'</span>'; }
+function colorTipo(t){ return t==='Ingreso'?'var(--green)' : t==='Gasto'?'var(--red)' : esDeposito(t)?'var(--blue)' : 'var(--amber)'; }
 
 function addMov(){
   var fecha=document.getElementById('f_fecha').value;
@@ -450,6 +543,7 @@ function addMov(){
 function delMov(id){
   if(!confirm('¿Borrar este movimiento?')) return;
   state.movimientos=state.movimientos.filter(function(m){return m.id!==id;});
+  try{ adjDel(id); }catch(e){}
   save(); toast('Movimiento borrado'); renderMovimientos();
 }
 function editMov(id){
@@ -518,7 +612,7 @@ function renderAjustes(){
      + '<div class="field"><label class="fl">Saldo inicial disponible (en cuenta)</label><input type="number" id="s_disp" value="'+state.saldoInicialDisponible+'"></div>'
      + '</div>';
   html+='<div style="margin-top:14px"><button class="btn" id="s_save">Guardar saldos</button></div>';
-  html+='<div class="savings-note">El <strong>ahorro</strong> y el <strong>sueldo disponible</strong> se llevan como dos bolsas separadas: registrar un ahorro no descuenta tu sueldo, y gastar del sueldo no toca tu ahorro.</div>';
+  html+='<div class="savings-note">El <strong>ahorro</strong> y el <strong>sueldo disponible</strong> son dos bolsas conectadas: cuando registras un ahorro o un traspaso a la cuenta de ahorro, ese monto se descuenta del sueldo disponible; y cuando lo traes de vuelta, se reintegra.</div>';
   html+='</div>';
 
   html+='<div class="card"><h2>Categorías de gasto</h2><div class="cap">Agrega o quita categorías para clasificar tus gastos.</div>';
@@ -534,6 +628,11 @@ function renderAjustes(){
   html+='<div class="card"><h2>Destinos de ahorro</h2>';
   html+='<div class="catlist" id="catlist_ahorro"></div>';
   html+='<div class="addcat"><input type="text" id="newcat_ahorro" placeholder="Nuevo destino de ahorro"><button class="btn sec" id="addcat_ahorro">Agregar</button></div>';
+  html+='</div>';
+
+  html+='<div class="card"><h2>Comprobantes</h2><div class="cap">Espacio usado por las boletas adjuntas. Al archivar, los comprobantes antiguos se descargan en un solo archivo (se abre en cualquier navegador para verlos) y luego se eliminan de la app para liberar espacio. Los movimientos y sus montos no se tocan.</div>';
+  html+='<div id="adj_stats" class="cap" style="font-weight:600;margin-top:4px">Calculando espacio…</div>';
+  html+='<div class="addcat" style="margin-top:10px"><select id="adj_edad"><option value="12">De más de 12 meses</option><option value="6">De más de 6 meses</option><option value="24">De más de 24 meses</option><option value="0">Todos</option></select><button class="btn sec" id="adj_archivar">Descargar y liberar espacio</button></div>';
   html+='</div>';
 
   html+='<div class="card"><h2>Datos</h2><div class="cap">Respalda o restablece tu información.</div>';
@@ -561,6 +660,8 @@ function renderAjustes(){
       state.categorias[k].push(v); save(); renderAjustes(); toast('Categoría agregada');
     });
   });
+  document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
+  cargarStatsAdjuntos();
   document.getElementById('exp_json').addEventListener('click',exportJSON);
   document.getElementById('exp_csv').addEventListener('click',exportCSV);
   document.getElementById('imp_btn').addEventListener('click',function(){document.getElementById('imp_file').click();});
@@ -584,9 +685,56 @@ function renderChips(kind){
     });
   });
 }
+
+function cargarStatsAdjuntos(){
+  var el=document.getElementById('adj_stats'); if(!el) return;
+  adjAll().then(function(rows){
+    if(rows.length===0){ el.textContent='No hay comprobantes guardados en este dispositivo.'; return; }
+    var bytes=rows.reduce(function(a,r){return a+(r.data?r.data.length*3/4:0);},0);
+    var mb=(bytes/1048576).toFixed(1);
+    el.textContent=rows.length+' comprobante'+(rows.length===1?'':'s')+' · aprox. '+mb+' MB usados';
+  }).catch(function(){ el.textContent='No se pudo leer el almacenamiento de comprobantes.'; });
+}
+function archivarComprobantes(meses){
+  var corte=new Date(); corte.setMonth(corte.getMonth()-meses);
+  var corteISO=corte.toISOString().slice(0,10);
+  var objetivo=state.movimientos.filter(function(m){ return m.adj && (meses===0 || m.fecha<corteISO); });
+  if(objetivo.length===0){ toast(meses===0?'No hay comprobantes para archivar':'No hay comprobantes de más de '+meses+' meses'); return; }
+  Promise.all(objetivo.map(function(m){ return adjGet(m.id).then(function(rec){ return {m:m,rec:rec}; }); })).then(function(pares){
+    pares=pares.filter(function(p){return p.rec;});
+    if(pares.length===0){ toast('No se encontraron los archivos en este dispositivo'); return; }
+    var doc='<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+      +'<title>Comprobantes archivados</title><style>body{font-family:Arial,sans-serif;background:#f4f6fa;margin:0;padding:20px}h1{font-size:20px}'
+      +'.c{background:#fff;border:1px solid #dde3ee;border-radius:10px;padding:14px;margin-bottom:16px;max-width:760px}'
+      +'.h{font-size:14px;color:#333;margin-bottom:8px}.h b{color:#0a2a5e}img{max-width:100%;border-radius:6px;border:1px solid #eee}'
+      +'a.pdf{display:inline-block;background:#0a2a5e;color:#fff;text-decoration:none;padding:8px 14px;border-radius:8px;font-size:14px}</style></head><body>'
+      +'<h1>Comprobantes archivados · exportado el '+todayISO()+'</h1>';
+    pares.sort(function(a,b){return a.m.fecha<b.m.fecha?-1:1;}).forEach(function(p){
+      var m=p.m, r=p.rec;
+      doc+='<div class="c"><div class="h"><b>'+fmtFecha(m.fecha)+'</b> · '+esc(m.tipo)+' · '+esc(m.categoria)+' · <b>'+money(m.monto)+'</b><br>'+esc(m.descripcion||'')+'</div>';
+      if(r.mime==='application/pdf'){ doc+='<a class="pdf" href="'+r.data+'" download="'+esc(r.nombre)+'">Descargar PDF: '+esc(r.nombre)+'</a>'; }
+      else { doc+='<img src="'+r.data+'" alt="'+esc(r.nombre)+'">'; }
+      doc+='</div>';
+    });
+    doc+='</body></html>';
+    downloadBlob(new Blob([doc],{type:'text/html'}),'comprobantes_archivo_'+todayISO()+'.html');
+    setTimeout(function(){
+      if(confirm('Se descargó el archivo con '+pares.length+' comprobante(s).\n\nGuárdalo en un lugar seguro ANTES de continuar.\n\n¿Eliminar ahora esos comprobantes de la app para liberar espacio? (Los movimientos no se borran)')){
+        Promise.all(pares.map(function(p){ return adjDel(p.m.id).then(function(){ delete p.m.adj; }); })).then(function(){
+          save(); renderAll(); toast(pares.length+' comprobante(s) archivados y espacio liberado');
+        });
+      } else { toast('Comprobantes descargados; siguen también en la app'); }
+    },600);
+  }).catch(function(){ toast('Error al leer los comprobantes'); });
+}
+
 function exportJSON(){
-  var blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
-  downloadBlob(blob,'finanzas_respaldo.json'); toast('Respaldo exportado');
+  adjAll().catch(function(){return [];}).then(function(adjuntos){
+    var pack={__formato:2,state:state,adjuntos:adjuntos};
+    var blob=new Blob([JSON.stringify(pack)],{type:'application/json'});
+    downloadBlob(blob,'finanzas_respaldo.json');
+    toast('Respaldo exportado ('+adjuntos.length+' comprobantes incluidos)');
+  });
 }
 function exportCSV(){
   var rows=[['Fecha','Tipo','Categoria','Descripcion','Medio','Monto']];
@@ -599,7 +747,20 @@ function exportCSV(){
 function importJSON(e){
   var f=e.target.files[0]; if(!f) return;
   var r=new FileReader();
-  r.onload=function(){ try{ var s=normalize(JSON.parse(r.result)); state=s; save(); buildYearSel(); renderAll(); toast('Respaldo importado'); }catch(err){ toast('Archivo inválido'); } };
+  r.onload=function(){
+    try{
+      var obj=JSON.parse(r.result);
+      if(obj&&obj.__formato===2){
+        state=normalize(obj.state); save();
+        var adj=obj.adjuntos||[];
+        adjClear().then(function(){ return Promise.all(adj.map(function(a){return adjPut(a);})); })
+          .catch(function(){})
+          .then(function(){ buildYearSel(); renderAll(); toast('Respaldo importado ('+adj.length+' comprobantes)'); });
+      } else {
+        state=normalize(obj); save(); buildYearSel(); renderAll(); toast('Respaldo importado');
+      }
+    }catch(err){ toast('Archivo inválido'); }
+  };
   r.readAsText(f); e.target.value='';
 }
 function downloadBlob(blob,name){
