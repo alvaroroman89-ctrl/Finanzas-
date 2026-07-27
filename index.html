@@ -156,6 +156,13 @@
     table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
     th,td{padding:7px 8px;font-size:12.5px}
   }
+  .syncbtn{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;
+    font:inherit;font-size:12px;font-weight:600;padding:5px 10px;border-radius:999px;cursor:pointer;
+    margin-right:10px;white-space:nowrap;line-height:1.2}
+  .syncbtn.ok{background:rgba(34,197,94,.28);border-color:rgba(34,197,94,.55)}
+  .syncbtn.err{background:rgba(239,68,68,.30);border-color:rgba(239,68,68,.6)}
+  .syncbtn.work{opacity:.7}
+  .syncbtn.off{opacity:.55}
 </style>
 </head>
 <body>
@@ -163,6 +170,7 @@
   <div class="hwrap">
     <div class="brand"><h1>Finanzas<span class="dot">·</span>Personales</h1></div>
     <div class="yearsel">
+      <button id="syncBtn" class="syncbtn" title="Sincronizar ahora">⟳ <span id="syncTxt">sin conexión</span></button>
       <label for="yearSel">Año</label>
       <select id="yearSel"></select>
     </div>
@@ -229,7 +237,9 @@ var DEFAULT = {
     {id:uid(), fecha:"2026-07-21", tipo:"Ingreso", categoria:"Sueldo", descripcion:"Sueldo restante del mes de junio", medio:"Débito", monto:3417},
     {id:uid(), fecha:"2026-07-21", tipo:"Ingreso", categoria:"Otros ingresos", descripcion:"Depósito APV Capital", medio:"Transferencia", monto:42763},
     {id:uid(), fecha:"2026-07-21", tipo:"Gasto", categoria:"Compras", descripcion:"Compra de desayuno", medio:"Débito", monto:2500}
-  ]
+  ],
+  borrados: [],          // lápidas: {id, actualizado} de movimientos eliminados
+  configActualizado: 0   // timestamp de la última edición de saldos/categorías/medios
 };
 
 var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
@@ -256,15 +266,21 @@ function normalize(s){
   s.categorias.ahorro=s.categorias.ahorro||DEFAULT.categorias.ahorro.slice();
   s.medios=s.medios||DEFAULT.medios.slice();
   s.movimientos=s.movimientos||[];
+  s.borrados=s.borrados||[];
+  s.configActualizado=+s.configActualizado||0;
   s.movimientos.forEach(function(m){
     if(m.adj && !m.adjs){ m.adjs=[{aid:m.id,nombre:m.adj.nombre,mime:m.adj.mime,kb:m.adj.kb||0}]; delete m.adj; }
     if(!m.adjs) m.adjs=[];
+    if(m.actualizado===undefined) m.actualizado=0;
   });
   return s;
 }
 function save(){
   try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+  if(typeof syncProgramar==='function') syncProgramar();
 }
+/* marca que la configuración (saldos, categorías, medios) cambió en este dispositivo */
+function marcarConfig(){ state.configActualizado=Date.now(); }
 function toast(msg){
   var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('show');},1900);
@@ -633,7 +649,7 @@ function addMov(){
   var monto=Math.round(+document.getElementById('f_monto').value||0);
   if(!fecha){ toast('Pon una fecha'); return; }
   if(monto<=0){ toast('Pon un monto mayor a 0'); return; }
-  state.movimientos.push({id:uid(),fecha:fecha,tipo:tipo,categoria:cat,descripcion:desc,medio:medio,monto:monto});
+  state.movimientos.push({id:uid(),fecha:fecha,tipo:tipo,categoria:cat,descripcion:desc,medio:medio,monto:monto,adjs:[],actualizado:Date.now()});
   save(); toast('Movimiento agregado'); renderMovimientos();
 }
 function delMov(id){
@@ -641,6 +657,8 @@ function delMov(id){
   var _victim=state.movimientos.find(function(m){return m.id===id;});
   try{ ((_victim&&_victim.adjs)||[]).forEach(function(a){ adjDel(a.aid); }); }catch(e){}
   state.movimientos=state.movimientos.filter(function(m){return m.id!==id;});
+  state.borrados=state.borrados||[];
+  state.borrados.push({id:id, actualizado:Date.now()});
   save(); toast('Movimiento borrado'); renderMovimientos();
 }
 function editMov(id){
@@ -649,6 +667,7 @@ function editMov(id){
   var nmonto=prompt('Monto:',m.monto); if(nmonto===null) return;
   var ndesc=prompt('Descripción:',m.descripcion); if(ndesc===null) return;
   m.fecha=nf.trim()||m.fecha; m.monto=Math.round(+nmonto||m.monto); m.descripcion=ndesc.trim();
+  m.actualizado=Date.now();
   save(); toast('Movimiento actualizado'); renderMovimientos();
 }
 
@@ -732,6 +751,23 @@ function renderAjustes(){
   html+='<div class="addcat" style="margin-top:10px"><select id="adj_edad"><option value="12">De más de 12 meses</option><option value="6">De más de 6 meses</option><option value="24">De más de 24 meses</option><option value="0">Todos</option></select><button class="btn sec" id="adj_archivar">Descargar y liberar espacio</button></div>';
   html+='</div>';
 
+  var sc=syncCfg();
+  html+='<div class="card"><h2>Sincronización</h2><div class="cap">Conecta este dispositivo a tu planilla de Google. Los movimientos quedan guardados fuera del navegador, así no se pierden al limpiarlo, y el teléfono y la tablet ven lo mismo. Los comprobantes (fotos) NO se sincronizan: quedan solo en el dispositivo donde los tomaste.</div>';
+  html+='<div class="settings-grid" style="margin-top:10px">'
+     + '<div class="field wide"><label class="fl">URL de la aplicación web (termina en /exec)</label><input type="text" id="sy_url" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(sc.url)+'"></div>'
+     + '<div class="field wide"><label class="fl">Token</label><input type="text" id="sy_token" placeholder="tu clave secreta" value="'+esc(sc.token)+'"></div>'
+     + '</div>';
+  html+='<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">'
+     + '<button class="btn" id="sy_guardar">Guardar y conectar</button>'
+     + '<button class="btn sec" id="sy_ahora">Sincronizar ahora</button>'
+     + '<button class="btn danger" id="sy_traer">Traer todo del servidor</button>'
+     + '</div>';
+  html+='<div style="margin-top:12px"><label style="display:flex;align-items:center;gap:8px;font-size:14px">'
+     + '<input type="checkbox" id="sy_auto"'+(sc.auto?' checked':'')+'> Sincronizar automáticamente cada 2 minutos</label></div>';
+  html+='<div class="cap" id="sy_estado" style="margin-top:10px;font-weight:600"></div>';
+  html+='<div class="savings-note"><strong>Traer todo del servidor</strong> borra los movimientos de este dispositivo y los reemplaza por los de la planilla. Úsalo solo la primera vez que conectas la tablet, o si limpiaste el navegador y necesitas recuperar todo.</div>';
+  html+='</div>';
+
   html+='<div class="card"><h2>Datos</h2><div class="cap">Respalda o restablece tu información.</div>';
   html+='<div style="display:flex;gap:10px;flex-wrap:wrap">'
      + '<button class="btn sec" id="exp_json">Exportar respaldo (.json)</button>'
@@ -747,16 +783,31 @@ function renderAjustes(){
   document.getElementById('s_save').addEventListener('click',function(){
     state.saldoInicialAhorrado=Math.round(+document.getElementById('s_aho').value||0);
     state.saldoInicialDisponible=Math.round(+document.getElementById('s_disp').value||0);
-    save(); toast('Saldos guardados');
+    marcarConfig(); save(); toast('Saldos guardados');
   });
   ['gasto','ingreso','ahorro'].forEach(function(k){
     document.getElementById('addcat_'+k).addEventListener('click',function(){
       var v=document.getElementById('newcat_'+k).value.trim();
       if(!v) return;
       if(state.categorias[k].indexOf(v)>=0){ toast('Ya existe'); return; }
-      state.categorias[k].push(v); save(); renderAjustes(); toast('Categoría agregada');
+      state.categorias[k].push(v); marcarConfig(); save(); renderAjustes(); toast('Categoría agregada');
     });
   });
+  document.getElementById('sy_guardar').addEventListener('click',function(){
+    var c=syncCfg();
+    c.url=document.getElementById('sy_url').value.trim();
+    c.token=document.getElementById('sy_token').value.trim();
+    syncCfgSet(c);
+    if(!c.url||!c.token){ toast('Falta la URL o el token'); syncPintaEstado(); return; }
+    toast('Conectando…'); syncAhora(false);
+  });
+  document.getElementById('sy_ahora').addEventListener('click',function(){ syncAhora(false); });
+  document.getElementById('sy_traer').addEventListener('click',syncTraerTodo);
+  document.getElementById('sy_auto').addEventListener('change',function(){
+    var c=syncCfg(); c.auto=this.checked; syncCfgSet(c);
+    toast(c.auto?'Sincronización automática activada':'Sincronización automática desactivada');
+  });
+  syncPintaEstado();
   document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
   cargarStatsAdjuntos();
   document.getElementById('exp_json').addEventListener('click',exportJSON);
@@ -778,7 +829,7 @@ function renderChips(kind){
     b.addEventListener('click',function(){
       var k=b.getAttribute('data-k'), c=b.getAttribute('data-c');
       state.categorias[k]=state.categorias[k].filter(function(x){return x!==c;});
-      save(); renderChips(k); toast('Categoría quitada');
+      marcarConfig(); save(); renderChips(k); toast('Categoría quitada');
     });
   });
 }
@@ -867,6 +918,217 @@ function downloadBlob(blob,name){
   setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
 }
 
+/* =================================================================
+   SINCRONIZACIÓN CON GOOGLE SHEETS
+   La planilla es la fuente de verdad; localStorage queda como copia
+   local para que la app abra rápido y funcione sin señal.
+   ================================================================= */
+var SKEY='finanzas_sync_cfg_v1';
+var _syncOcupado=false, _syncTimer=null, _aplicando=false;
+
+function syncCfg(){
+  try{
+    var raw=localStorage.getItem(SKEY);
+    if(raw){ var c=JSON.parse(raw);
+      return {url:c.url||'', token:c.token||'', auto:c.auto!==false, ultimo:+c.ultimo||0}; }
+  }catch(e){}
+  return {url:'', token:'', auto:true, ultimo:0};
+}
+function syncCfgSet(c){ try{ localStorage.setItem(SKEY,JSON.stringify(c)); }catch(e){} }
+function syncActivo(){ var c=syncCfg(); return !!(c.url && c.token); }
+
+function syncPinta(clase,texto){
+  var b=document.getElementById('syncBtn'), t=document.getElementById('syncTxt');
+  if(!b||!t) return;
+  b.className='syncbtn'+(clase?' '+clase:'');
+  t.textContent=texto;
+}
+function horaCorta(ms){
+  var d=new Date(ms);
+  return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+}
+function syncPintaEstado(){
+  var c=syncCfg(), el=document.getElementById('sy_estado');
+  if(!syncActivo()){
+    syncPinta('off','sin conexión');
+    if(el) el.textContent='No conectado. Pega la URL y el token, y toca “Guardar y conectar”.';
+    return;
+  }
+  syncPinta('ok', c.ultimo?horaCorta(c.ultimo):'conectado');
+  if(el) el.textContent = c.ultimo
+    ? 'Última sincronización: '+new Date(c.ultimo).toLocaleString('es-CL')
+    : 'Conectado, aún sin sincronizar.';
+}
+
+/* lo que se envía: movimientos vivos + lápidas de los borrados.
+   Los comprobantes (adjs) NO viajan: son locales de cada dispositivo. */
+function syncPayload(){
+  var movs=state.movimientos.map(function(m){
+    return {id:String(m.id), fecha:m.fecha||'', tipo:m.tipo||'', categoria:m.categoria||'',
+            descripcion:m.descripcion||'', medio:m.medio||'', monto:+m.monto||0,
+            actualizado:+m.actualizado||0, eliminado:false};
+  });
+  (state.borrados||[]).forEach(function(b){
+    movs.push({id:String(b.id), fecha:'', tipo:'', categoria:'', descripcion:'', medio:'',
+               monto:0, actualizado:+b.actualizado||0, eliminado:true});
+  });
+  return {
+    token: syncCfg().token,
+    movimientos: movs,
+    config: {
+      saldoInicialAhorrado: state.saldoInicialAhorrado,
+      saldoInicialDisponible: state.saldoInicialDisponible,
+      categorias: state.categorias,
+      medios: state.medios
+    },
+    configActualizado: +state.configActualizado||0
+  };
+}
+
+/* fusiona la respuesta del servidor con lo local. Gana la versión con
+   "actualizado" más alto. Devuelve cuántos cambios se aplicaron. */
+function syncAplicar(resp){
+  var localPorId={}, lapidas={}, cambios=0;
+  state.movimientos.forEach(function(m){ localPorId[String(m.id)]=m; });
+  (state.borrados||[]).forEach(function(b){ lapidas[String(b.id)]=+b.actualizado||0; });
+
+  (resp.movimientos||[]).forEach(function(s){
+    var id=String(s.id), ts=+s.actualizado||0;
+
+    if(s.eliminado){
+      var vic=localPorId[id];
+      if(vic && (+vic.actualizado||0) <= ts){ delete localPorId[id]; cambios++; }
+      if(lapidas[id]===undefined || lapidas[id]<ts) lapidas[id]=ts;
+      return;
+    }
+    // si acá lo borramos DESPUÉS de esta versión, mantenemos el borrado
+    if(lapidas[id]!==undefined && lapidas[id]>=ts) return;
+
+    var local=localPorId[id];
+    if(!local){
+      s.adjs=[]; s.monto=+s.monto||0; s.actualizado=ts;
+      localPorId[id]=s; cambios++;
+    } else if(ts > (+local.actualizado||0)){
+      s.adjs=local.adjs||[];        // no se pisan los comprobantes locales
+      s.monto=+s.monto||0; s.actualizado=ts;
+      localPorId[id]=s; cambios++;
+    }
+  });
+
+  var lista=[];
+  Object.keys(localPorId).forEach(function(k){ lista.push(localPorId[k]); });
+  lista.sort(function(a,b){ return a.fecha<b.fecha?1:(a.fecha>b.fecha?-1:0); });
+  state.movimientos=lista;
+  state.borrados=Object.keys(lapidas).map(function(id){ return {id:id, actualizado:lapidas[id]}; });
+
+  if(resp.config && (+resp.configActualizado||0) > (+state.configActualizado||0)){
+    var c=resp.config;
+    if(c.saldoInicialAhorrado!==undefined)   state.saldoInicialAhorrado=+c.saldoInicialAhorrado||0;
+    if(c.saldoInicialDisponible!==undefined) state.saldoInicialDisponible=+c.saldoInicialDisponible||0;
+    if(c.categorias) state.categorias=c.categorias;
+    if(c.medios)     state.medios=c.medios;
+    state.configActualizado=+resp.configActualizado||0;
+    cambios++;
+  }
+  return cambios;
+}
+
+/* envía lo local y recibe el set completo, en una sola llamada */
+function syncAhora(silencioso){
+  if(!syncActivo()){ if(!silencioso) toast('Primero configura la URL y el token'); return; }
+  if(_syncOcupado) return;
+  _syncOcupado=true;
+  clearTimeout(_syncTimer);
+  syncPinta('work','sincronizando…');
+
+  var c=syncCfg();
+  fetch(c.url,{
+    method:'POST',
+    // text/plain evita la petición "preflight" que Apps Script no sabe responder
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(syncPayload()),
+    redirect:'follow'
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(resp){
+    if(!resp || !resp.ok) throw new Error((resp&&resp.error)||'respuesta inválida');
+    _aplicando=true;
+    var cambios=syncAplicar(resp);
+    try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+    _aplicando=false;
+    var cc=syncCfg(); cc.ultimo=Date.now(); syncCfgSet(cc);
+    if(cambios){ buildYearSel(); renderAll(); }
+    syncPintaEstado();
+    if(!silencioso) toast(cambios ? ('Sincronizado · '+cambios+' cambio'+(cambios===1?'':'s'))
+                                  : 'Sincronizado, todo al día');
+  })
+  .catch(function(err){
+    _aplicando=false;
+    syncPinta('err','error');
+    var el=document.getElementById('sy_estado');
+    if(el) el.textContent='Error: '+err.message+' · Revisa la URL, el token, y que la implementación tenga acceso “cualquier usuario”.';
+    if(!silencioso) toast('No se pudo sincronizar');
+  })
+  .then(function(){ _syncOcupado=false; });
+}
+
+/* reemplaza lo local por lo del servidor (primera vez en la tablet,
+   o para recuperar después de limpiar el navegador) */
+function syncTraerTodo(){
+  if(!syncActivo()){ toast('Primero configura la URL y el token'); return; }
+  if(!confirm('Esto reemplaza los movimientos de ESTE dispositivo por los de la planilla. ¿Continuar?')) return;
+
+  var c=syncCfg();
+  syncPinta('work','descargando…');
+  fetch(c.url+'?token='+encodeURIComponent(c.token),{redirect:'follow'})
+  .then(function(r){ return r.json(); })
+  .then(function(resp){
+    if(!resp || !resp.ok) throw new Error((resp&&resp.error)||'respuesta inválida');
+    var todos=resp.movimientos||[];
+    state.movimientos=todos.filter(function(m){ return !m.eliminado; }).map(function(m){
+      m.id=String(m.id); m.monto=+m.monto||0; m.actualizado=+m.actualizado||0; m.adjs=[]; return m;
+    });
+    state.borrados=todos.filter(function(m){ return m.eliminado; }).map(function(m){
+      return {id:String(m.id), actualizado:+m.actualizado||0};
+    });
+    if(resp.config){
+      var g=resp.config;
+      if(g.saldoInicialAhorrado!==undefined)   state.saldoInicialAhorrado=+g.saldoInicialAhorrado||0;
+      if(g.saldoInicialDisponible!==undefined) state.saldoInicialDisponible=+g.saldoInicialDisponible||0;
+      if(g.categorias) state.categorias=g.categorias;
+      if(g.medios)     state.medios=g.medios;
+      state.configActualizado=+resp.configActualizado||0;
+    }
+    try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+    var cc=syncCfg(); cc.ultimo=Date.now(); syncCfgSet(cc);
+    buildYearSel(); renderAll();
+    toast(state.movimientos.length+' movimientos traídos del servidor');
+  })
+  .catch(function(err){ syncPinta('err','error'); toast('No se pudo descargar: '+err.message); });
+}
+
+/* agenda un envío 4 s después de cualquier cambio (lo llama save()) */
+function syncProgramar(){
+  if(_aplicando) return;
+  var c=syncCfg();
+  if(!c.url || !c.token || !c.auto) return;
+  clearTimeout(_syncTimer);
+  _syncTimer=setTimeout(function(){ syncAhora(true); },4000);
+}
+
+/* ciclo automático cada 2 minutos, solo con la app en pantalla */
+setInterval(function(){
+  var c=syncCfg();
+  if(c.auto && c.url && c.token && document.visibilityState==='visible') syncAhora(true);
+},120000);
+
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState!=='visible') return;
+  var c=syncCfg();
+  if(c.auto && c.url && c.token && (Date.now()-(c.ultimo||0) > 30000)) syncAhora(true);
+});
+window.addEventListener('online',function(){ syncProgramar(); });
+
 /* ---------- navegación / init ---------- */
 function buildYearSel(){
   var years={}; years[state.year]=1; years[new Date().getFullYear()]=1;
@@ -892,9 +1154,13 @@ document.querySelectorAll('.tab').forEach(function(t){
   });
 });
 
+document.getElementById('syncBtn').addEventListener('click',function(){ syncAhora(false); });
+
 initVisor();
 buildYearSel();
 renderAll();
+syncPintaEstado();
+if(syncActivo() && syncCfg().auto) syncAhora(true);
 </script>
 </body>
 </html>
