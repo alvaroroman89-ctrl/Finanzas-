@@ -456,7 +456,7 @@ var DEFAULT = {
 var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="2.3", APP_FECHA="03-08-2026";
+var APP_VERSION="2.4", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -480,6 +480,9 @@ function normalize(s){
   s.movimientos=s.movimientos||[];
   s.borrados=s.borrados||[];
   s.configActualizado=+s.configActualizado||0;
+  var base=s.configActualizado;
+  if(!s.cfgTs||typeof s.cfgTs!=='object') s.cfgTs={};
+  ['disp','aho','cats','med'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
   s.movimientos.forEach(function(m){
     if(m.adj && !m.adjs){ m.adjs=[{aid:m.id,nombre:m.adj.nombre,mime:m.adj.mime,kb:m.adj.kb||0}]; delete m.adj; }
@@ -493,7 +496,19 @@ function save(){
   if(typeof syncProgramar==='function') syncProgramar();
 }
 /* marca que la configuración (saldos, categorías, medios) cambió en este dispositivo */
-function marcarConfig(){ state.configActualizado=Date.now(); marcarUsado(); }
+/* FIX: antes la configuración viajaba como un bloque único con una sola marca
+   de tiempo. Si ajustabas el saldo en el teléfono y después agregabas una
+   categoría en la tablet, la config completa de la tablet ganaba y devolvía el
+   saldo a su valor anterior. Ahora cada campo lleva su propia marca y solo se
+   reemplaza el campo que realmente cambió. */
+var CFG_CAMPOS=['disp','aho','cats','med'];
+function marcarConfig(campo){
+  var t=Date.now();
+  if(!state.cfgTs) state.cfgTs={};
+  (campo?[campo]:CFG_CAMPOS).forEach(function(k){ state.cfgTs[k]=t; });
+  state.configActualizado=t;
+  marcarUsado();
+}
 /* FIX: en cuanto el usuario toca algo, este dispositivo deja de ser "recién
    instalado" y ya puede subir sus movimientos a la planilla. Mientras siga
    siendo nuevo, solo descarga: así los 3 movimientos de ejemplo nunca se suben. */
@@ -669,7 +684,7 @@ function ajustarSaldo(cual,actual){
   if(cual==='disp') state.saldoInicialDisponible+=delta; else state.saldoInicialAhorrado+=delta;
   /* FIX: sin marcarConfig() el ajuste viajaba con timestamp viejo y el otro
      dispositivo lo pisaba en la siguiente sincronización. */
-  marcarConfig();
+  marcarConfig(cual==='disp'?'disp':'aho');
   save(); renderAll(); toast(nombre+' ajustado a '+money(nuevo));
 }
 function kpi(label,val,cls){
@@ -1176,14 +1191,14 @@ function renderAjustes(){
   document.getElementById('s_save').addEventListener('click',function(){
     state.saldoInicialAhorrado=Math.round(+document.getElementById('s_aho').value||0);
     state.saldoInicialDisponible=Math.round(+document.getElementById('s_disp').value||0);
-    marcarConfig(); save(); toast('Saldos guardados');
+    marcarConfig('disp'); marcarConfig('aho'); save(); toast('Saldos guardados');
   });
   ['gasto','ingreso','ahorro'].forEach(function(k){
     document.getElementById('addcat_'+k).addEventListener('click',function(){
       var v=document.getElementById('newcat_'+k).value.trim();
       if(!v) return;
       if(state.categorias[k].indexOf(v)>=0){ toast('Ya existe'); return; }
-      state.categorias[k].push(v); marcarConfig(); save(); renderAjustes(); toast('Categoría agregada');
+      state.categorias[k].push(v); marcarConfig('cats'); save(); renderAjustes(); toast('Categoría agregada');
     });
   });
   document.getElementById('sy_guardar').addEventListener('click',function(){
@@ -1228,7 +1243,7 @@ function renderChips(kind){
     b.addEventListener('click',function(){
       var k=b.getAttribute('data-k'), c=b.getAttribute('data-c');
       state.categorias[k]=state.categorias[k].filter(function(x){return x!==c;});
-      marcarConfig(); save(); renderChips(k); toast('Categoría quitada');
+      marcarConfig('cats'); save(); renderChips(k); toast('Categoría quitada');
     });
   });
 }
@@ -1631,7 +1646,8 @@ function syncPayload(){
       categorias: state.categorias,
       medios: state.medios
     },
-    configActualizado: +state.configActualizado||0
+    configActualizado: +state.configActualizado||0,
+    cfgTs: state.cfgTs||{}
   };
 }
 
@@ -1677,14 +1693,19 @@ function syncAplicar(resp){
   state.movimientos=lista;
   state.borrados=Object.keys(lapidas).map(function(id){ return {id:id, actualizado:lapidas[id]}; });
 
-  if(resp.config && (+resp.configActualizado||0) > (+state.configActualizado||0)){
-    var c=resp.config;
-    if(c.saldoInicialAhorrado!==undefined)   state.saldoInicialAhorrado=+c.saldoInicialAhorrado||0;
-    if(c.saldoInicialDisponible!==undefined) state.saldoInicialDisponible=+c.saldoInicialDisponible||0;
-    if(c.categorias) state.categorias=c.categorias;
-    if(c.medios)     state.medios=c.medios;
-    state.configActualizado=+resp.configActualizado||0;
-    cambios++;
+  if(resp.config){
+    var c=resp.config, base=+resp.configActualizado||0, rts=resp.cfgTs||{};
+    function gana(k){ return (+rts[k]||base) > (+(state.cfgTs||{})[k]||0); }
+    if(!state.cfgTs) state.cfgTs={};
+    if(c.saldoInicialDisponible!==undefined && gana('disp')){
+      state.saldoInicialDisponible=+c.saldoInicialDisponible||0; state.cfgTs.disp=+rts.disp||base; cambios++;
+    }
+    if(c.saldoInicialAhorrado!==undefined && gana('aho')){
+      state.saldoInicialAhorrado=+c.saldoInicialAhorrado||0; state.cfgTs.aho=+rts.aho||base; cambios++;
+    }
+    if(c.categorias && gana('cats')){ state.categorias=c.categorias; state.cfgTs.cats=+rts.cats||base; cambios++; }
+    if(c.medios && gana('med')){ state.medios=c.medios; state.cfgTs.med=+rts.med||base; cambios++; }
+    state.configActualizado=Math.max(+state.configActualizado||0,base);
   }
   return cambios;
 }
