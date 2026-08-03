@@ -189,6 +189,11 @@
 
   .filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px}
   .filters .field{min-width:132px}
+  .fsum{
+    font-size:12.5px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line-2);
+    border-radius:var(--r-sm);padding:9px 13px;margin-bottom:12px;
+  }
+  .fsum strong,.fsum b{color:var(--ink);font-weight:700}
   .empty{text-align:center;color:var(--muted);padding:36px 12px;font-size:14px}
 
   /* ---------- matriz del cierre ---------- */
@@ -451,7 +456,7 @@ var DEFAULT = {
 var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="2.2", APP_FECHA="03-08-2026";
+var APP_VERSION="2.3", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -672,7 +677,7 @@ function kpi(label,val,cls){
 }
 
 /* ---------- render: MOVIMIENTOS ---------- */
-var filtro={mes:'todos',tipo:'todos'};
+var filtro={mes:'todos',tipo:'todos',cat:'todos',desde:'',hasta:''};
 
 /* ===== Comprobantes (IndexedDB) ===== */
 var _adjdb=null;
@@ -851,11 +856,21 @@ function renderMovimientos(){
   html+='<div class="filters">'
       + fld('Mes','<select id="flt_mes"><option value="todos">Todos</option>'+MESES.map(function(m,i){return '<option value="'+(i+1)+'"'+(filtro.mes==String(i+1)?' selected':'')+'>'+m+'</option>';}).join('')+'</select>')
       + fld('Tipo','<select id="flt_tipo"><option value="todos">Todos</option>'+TIPOS.map(function(t){return '<option'+(filtro.tipo==t?' selected':'')+'>'+t+'</option>';}).join('')+'</select>')
+      + fld('Categoría','<select id="flt_cat"><option value="todos">Todas</option>'+todasLasCategorias().map(function(cc){return '<option'+(filtro.cat===cc?' selected':'')+'>'+esc(cc)+'</option>';}).join('')+'</select>')
+      + fld('Desde','<input type="date" id="flt_desde" value="'+esc(filtro.desde)+'">')
+      + fld('Hasta','<input type="date" id="flt_hasta" value="'+esc(filtro.hasta)+'">')
+      + '<div class="field"><label class="fl">&nbsp;</label><button class="btn sec" id="flt_limpiar">Limpiar filtros</button></div>'
       + '</div>';
-  var list=state.movimientos.filter(function(m){return yearOf(m)===y;})
+  /* Con un rango de fechas puesto se busca en todos los años; sin él, manda el año elegido arriba. */
+  var hayRango=!!(filtro.desde||filtro.hasta);
+  var list=state.movimientos.filter(function(m){return hayRango||yearOf(m)===y;})
       .filter(function(m){return filtro.mes==='todos'||monthOf(m)===+filtro.mes;})
       .filter(function(m){return filtro.tipo==='todos'||m.tipo===filtro.tipo;})
+      .filter(function(m){return filtro.cat==='todos'||m.categoria===filtro.cat;})
+      .filter(function(m){return !filtro.desde||(m.fecha||'')>=filtro.desde;})
+      .filter(function(m){return !filtro.hasta||(m.fecha||'')<=filtro.hasta;})
       .sort(function(a,b){return a.fecha<b.fecha?1:-1;});
+  html+=resumenFiltro(list);
   if(list.length===0){ html+='<div class="empty">No hay movimientos con estos filtros.</div>'; }
   else{
     html+='<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th>Monto</th><th>Comp.</th><th></th></tr></thead><tbody>';
@@ -887,6 +902,12 @@ function renderMovimientos(){
   document.getElementById('f_add').addEventListener('click',addMov);
   document.getElementById('flt_mes').addEventListener('change',function(){filtro.mes=this.value;renderMovimientos();});
   document.getElementById('flt_tipo').addEventListener('change',function(){filtro.tipo=this.value;renderMovimientos();});
+  document.getElementById('flt_cat').addEventListener('change',function(){filtro.cat=this.value;renderMovimientos();});
+  document.getElementById('flt_desde').addEventListener('change',function(){filtro.desde=this.value;renderMovimientos();});
+  document.getElementById('flt_hasta').addEventListener('change',function(){filtro.hasta=this.value;renderMovimientos();});
+  document.getElementById('flt_limpiar').addEventListener('click',function(){
+    filtro={mes:'todos',tipo:'todos',cat:'todos',desde:'',hasta:''}; renderMovimientos();
+  });
   el.querySelectorAll('[data-del]').forEach(function(b){b.addEventListener('click',function(){delMov(b.getAttribute('data-del'));});});
   el.querySelectorAll('[data-edit]').forEach(function(b){b.addEventListener('click',function(){editMov(b.getAttribute('data-edit'));});});
   el.querySelectorAll('[data-adjadd]').forEach(function(b){b.addEventListener('click',function(){pedirAdjunto(b.getAttribute('data-adjadd'));});});
@@ -904,6 +925,35 @@ function listaDescripciones(){
   return '<datalist id="desc_prev">'+out.slice(0,300).map(function(d){
     return '<option value="'+esc(d)+'">';
   }).join('')+'</datalist>';
+}
+/* Todas las categorías en uso: las configuradas más las que quedaron en
+   movimientos antiguos, para que ninguna quede fuera del filtro. */
+function todasLasCategorias(){
+  var vistas={}, out=[];
+  (state.categorias.ingreso||[]).concat(state.categorias.gasto||[],state.categorias.ahorro||[])
+    .forEach(function(c){ if(!vistas[c]){ vistas[c]=1; out.push(c); } });
+  state.movimientos.forEach(function(m){
+    var c=(m.categoria||'').trim();
+    if(c && !vistas[c]){ vistas[c]=1; out.push(c); }
+  });
+  return out.sort(function(a,b){ return a.localeCompare(b,'es'); });
+}
+/* Cuánto suma lo que estás viendo con los filtros puestos. */
+function resumenFiltro(list){
+  if(!list.length) return '';
+  var ing=0,gas=0,dep=0,ret=0;
+  list.forEach(function(m){
+    var v=+m.monto||0;
+    if(m.tipo==='Ingreso') ing+=v; else if(m.tipo==='Gasto') gas+=v;
+    else if(esDeposito(m.tipo)) dep+=v; else if(esRetiro(m.tipo)) ret+=v;
+  });
+  var p=[];
+  if(ing) p.push('Ingresos <b>'+money(ing)+'</b>');
+  if(gas) p.push('Gastos <b>'+money(gas)+'</b>');
+  if(dep) p.push('A ahorro <b>'+money(dep)+'</b>');
+  if(ret) p.push('Desde ahorro <b>'+money(ret)+'</b>');
+  return '<div class="fsum"><strong>'+list.length+'</strong> movimiento'+(list.length===1?'':'s')
+       + (p.length?' · '+p.join(' · '):'')+'</div>';
 }
 function fld(label,inner,wide){ return '<div class="field'+(wide?' wide':'')+'"><label class="fl">'+label+'</label>'+inner+'</div>'; }
 function fmtFecha(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
