@@ -144,6 +144,30 @@
 
   .row-actions{display:flex;gap:6px;justify-content:flex-end}
   .savings-note{font-size:12px;color:var(--muted);background:var(--blue-bg);border:1px solid #CBDBFB;border-radius:10px;padding:10px 12px;margin-top:12px}
+  .verfoot{text-align:center;font-size:12px;color:var(--muted);padding:14px 0 4px}
+  .verfoot strong{color:var(--ink)}
+  /* saldos en vivo dentro de Movimientos */
+  .saldos-live{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .sl{border-radius:12px;padding:10px 12px;border:1px solid var(--line);background:var(--surface)}
+  .sl.disp{border-left:4px solid var(--green)}
+  .sl.aho{border-left:4px solid var(--blue)}
+  .sl-t{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+  .sl-v{display:block;font-size:17px;font-weight:700;color:var(--ink);margin-top:3px}
+  @media(max-width:420px){.sl-v{font-size:15px}}
+  /* auditoría interna */
+  .aud-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 10px}
+  .aud-tag{font-size:12px;font-weight:700;padding:5px 10px;border-radius:999px}
+  .aud-tag.ok{background:#DCFCE7;color:#166534}
+  .aud-tag.warn{background:#FEF3C7;color:#92400E}
+  .aud-tag.err{background:#FEE2E2;color:#991B1B}
+  .aud-row{display:flex;gap:10px;padding:9px 11px;border:1px solid var(--line2);border-radius:10px;margin-bottom:6px;align-items:flex-start;background:var(--surface)}
+  .aud-row.warn{border-color:#FCD34D;background:#FFFBEB}
+  .aud-row.err{border-color:#FCA5A5;background:#FEF2F2}
+  .aud-ico{font-size:15px;line-height:1.3;flex:none}
+  .aud-txt{flex:1;min-width:0}
+  .aud-t{font-size:13px;font-weight:600;color:var(--ink)}
+  .aud-d{font-size:12px;color:var(--muted);margin-top:2px;word-break:break-word}
+  .aud-d b{color:var(--ink)}
 
   @media(max-width:720px){
     .buckets{grid-template-columns:1fr}
@@ -218,7 +242,18 @@ function money(n){ return CLP.format(Math.round(n||0)); }
 function pct(n){ return (Math.round((n||0)*1000)/10).toString().replace('.',',')+'%'; }
 var MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 var MESES3=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-function todayISO(){ var d=new Date(); return d.toISOString().slice(0,10); }
+/* FIX: usa la fecha LOCAL del dispositivo (Chile), no UTC.
+   Antes, después de las 20:00 hora chilena toISOString() ya marcaba el día siguiente
+   y el movimiento se registraba en el mes equivocado. */
+function isoLocal(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function todayISO(){ return isoLocal(new Date()); }
+function fechaValida(s){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(s||'')) return false;
+  var a=+s.slice(0,4), m=+s.slice(5,7), d=+s.slice(8,10);
+  if(a<1900||a>2200||m<1||m>12||d<1||d>31) return false;
+  var t=new Date(a,m-1,d);
+  return t.getFullYear()===a && t.getMonth()===m-1 && t.getDate()===d;
+}
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
@@ -234,17 +269,22 @@ var DEFAULT = {
   },
   medios: ["Efectivo","Débito","Crédito","Transferencia","Cheque"],
   movimientos: [
-    {id:uid(), fecha:"2026-07-21", tipo:"Ingreso", categoria:"Sueldo", descripcion:"Sueldo restante del mes de junio", medio:"Débito", monto:3417},
-    {id:uid(), fecha:"2026-07-21", tipo:"Ingreso", categoria:"Otros ingresos", descripcion:"Depósito APV Capital", medio:"Transferencia", monto:42763},
-    {id:uid(), fecha:"2026-07-21", tipo:"Gasto", categoria:"Compras", descripcion:"Compra de desayuno", medio:"Débito", monto:2500}
+    /* FIX: IDs fijos (antes eran uid() nuevos en cada carga, lo que creaba
+       movimientos duplicados en la planilla cada vez que se abría la app
+       en un navegador nuevo o después de "Restablecer todo"). */
+    {id:"seed_1", fecha:"2026-07-21", tipo:"Ingreso", categoria:"Sueldo", descripcion:"Sueldo restante del mes de junio", medio:"Débito", monto:3417},
+    {id:"seed_2", fecha:"2026-07-21", tipo:"Ingreso", categoria:"Otros ingresos", descripcion:"Depósito APV Capital", medio:"Transferencia", monto:42763},
+    {id:"seed_3", fecha:"2026-07-21", tipo:"Gasto", categoria:"Compras", descripcion:"Compra de desayuno", medio:"Débito", monto:2500}
   ],
   borrados: [],          // lápidas: {id, actualizado} de movimientos eliminados
-  configActualizado: 0   // timestamp de la última edición de saldos/categorías/medios
+  configActualizado: 0,  // timestamp de la última edición de saldos/categorías/medios
+  _esNuevo: true         // instalación recién estrenada: aún no tiene datos propios
 };
 
 var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
+var APP_VERSION="2.1", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -268,6 +308,7 @@ function normalize(s){
   s.movimientos=s.movimientos||[];
   s.borrados=s.borrados||[];
   s.configActualizado=+s.configActualizado||0;
+  s._esNuevo=!!s._esNuevo;
   s.movimientos.forEach(function(m){
     if(m.adj && !m.adjs){ m.adjs=[{aid:m.id,nombre:m.adj.nombre,mime:m.adj.mime,kb:m.adj.kb||0}]; delete m.adj; }
     if(!m.adjs) m.adjs=[];
@@ -280,7 +321,11 @@ function save(){
   if(typeof syncProgramar==='function') syncProgramar();
 }
 /* marca que la configuración (saldos, categorías, medios) cambió en este dispositivo */
-function marcarConfig(){ state.configActualizado=Date.now(); }
+function marcarConfig(){ state.configActualizado=Date.now(); marcarUsado(); }
+/* FIX: en cuanto el usuario toca algo, este dispositivo deja de ser "recién
+   instalado" y ya puede subir sus movimientos a la planilla. Mientras siga
+   siendo nuevo, solo descarga: así los 3 movimientos de ejemplo nunca se suben. */
+function marcarUsado(){ state._esNuevo=false; }
 function toast(msg){
   var t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove('show');},1900);
@@ -323,7 +368,11 @@ function calc(year){
     var esFuturo=new Date(year,j,1)>hoy;
     acum.push(esFuturo?null:run);
   }
-  return {ingMes:ingMes,gasMes:gasMes,ahoMes:ahoMes,dispMes:dispMes,ingAno:ingAno,gasAno:gasAno,ahoAno:ahoAno,dispAno:dispAno,saldoAhorro:saldoAhorro,saldoDisp:saldoDisp,acum:acum};
+  /* FIX: el pie de la columna "Ahorro acum." mostraba el saldo de TODO el
+     historial. Ahora muestra el último saldo acumulado real del año elegido. */
+  var acumFin=acumInicio;
+  for(var k=0;k<12;k++){ if(acum[k]!=null) acumFin=acum[k]; }
+  return {ingMes:ingMes,gasMes:gasMes,ahoMes:ahoMes,dispMes:dispMes,ingAno:ingAno,gasAno:gasAno,ahoAno:ahoAno,dispAno:dispAno,saldoAhorro:saldoAhorro,saldoDisp:saldoDisp,acum:acum,acumFin:acumFin};
 }
 function gastoPorCategoria(year){
   var map={};
@@ -333,16 +382,34 @@ function gastoPorCategoria(year){
   });
   return map;
 }
+function catGasto(m){ return (m.categoria&&String(m.categoria).trim())||'(sin categoría)'; }
 function gastoCatMes(year){ // {cat:{mes:monto}}
   var res={};
   state.categorias.gasto.forEach(function(c){ res[c]={}; });
   state.movimientos.forEach(function(m){
     if(m.tipo==='Gasto'&&yearOf(m)===year){
-      if(!res[m.categoria]) res[m.categoria]={};
-      var mm=monthOf(m); res[m.categoria][mm]=(res[m.categoria][mm]||0)+(+m.monto||0);
+      var cat=catGasto(m);
+      if(!res[cat]) res[cat]={};
+      var mm=monthOf(m); res[cat][mm]=(res[cat][mm]||0)+(+m.monto||0);
     }
   });
   return res;
+}
+/* FIX: la matriz del Cierre solo recorría las categorías vigentes en Ajustes.
+   Si borrabas una categoría (o la sincronización la reemplazaba), sus gastos
+   desaparecían de la matriz y del TOTAL GASTOS, pero seguían sumando en el
+   Resumen y en el saldo. Ahora se incluyen también las categorías huérfanas. */
+function catsGastoConDatos(cm){
+  var lista=state.categorias.gasto.slice(), extras=[];
+  Object.keys(cm).forEach(function(k){
+    if(lista.indexOf(k)<0){
+      var row=cm[k], tiene=false;
+      for(var i=1;i<=12;i++){ if(row[i]) tiene=true; }
+      if(tiene) extras.push(k);
+    }
+  });
+  extras.sort();
+  return {cats:lista.concat(extras), huerfanas:extras};
 }
 
 /* ---------- render: RESUMEN ---------- */
@@ -386,7 +453,7 @@ function renderResumen(){
      +'<td class="num">'+money(c.gasAno)+'</td>'
      +'<td class="num'+(c.ahoAno<0?' neg':'')+'">'+money(c.ahoAno)+'</td>'
      +'<td class="num'+(c.dispAno<0?' neg':'')+'">'+money(c.dispAno)+'</td>'
-     +'<td class="num">'+money(c.saldoAhorro)+'</td></tr></tfoot></table></div>';
+     +'<td class="num">'+money(c.acumFin)+'</td></tr></tfoot></table></div>';
 
   // gastos por categoria
   html+='<div class="card"><h2>Gastos por categoría '+y+'</h2><div class="cap">En qué se te va la plata este año</div>';
@@ -415,6 +482,9 @@ function ajustarSaldo(cual,actual){
   if(isNaN(nuevo)){ toast('Monto no válido'); return; }
   var delta=nuevo-Math.round(actual);
   if(cual==='disp') state.saldoInicialDisponible+=delta; else state.saldoInicialAhorrado+=delta;
+  /* FIX: sin marcarConfig() el ajuste viajaba con timestamp viejo y el otro
+     dispositivo lo pisaba en la siguiente sincronización. */
+  marcarConfig();
   save(); renderAll(); toast(nombre+' ajustado a '+money(nuevo));
 }
 function kpi(label,val,cls){
@@ -576,7 +646,14 @@ function cerrarVisor(){ _visorMid=null; document.getElementById('visor').classLi
 function renderMovimientos(){
   var el=document.getElementById('movimientos');
   var y=state.year;
+  var cs=calc(y);
   var html='';
+  /* FIX: los dos saldos ahora se ven en esta misma pantalla y se actualizan al
+     instante, sin tener que cambiar de pestaña ni recargar. */
+  html+='<div class="saldos-live">'
+      + '<div class="sl disp"><span class="sl-t">Sueldo disponible</span><span class="sl-v num">'+verSaldo(cs.saldoDisp)+'</span></div>'
+      + '<div class="sl aho"><span class="sl-t">Ahorro</span><span class="sl-v num">'+verSaldo(cs.saldoAhorro)+'</span></div>'
+      + '</div>';
   // formulario
   html+='<div class="card"><h2>Nuevo movimiento</h2><div class="cap">Registra cada compra, gasto, ingreso o movimiento de ahorro del día a día.</div>';
   html+='<div class="form-grid" id="frm">'
@@ -640,6 +717,15 @@ function fmtFecha(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
 function pill(t){ var cls = t==='Ingreso'?'ing' : t==='Gasto'?'gas' : esDeposito(t)?'aho' : 'ret'; return '<span class="pill '+cls+'">'+t+'</span>'; }
 function colorTipo(t){ return t==='Ingreso'?'var(--green)' : t==='Gasto'?'var(--red)' : esDeposito(t)?'var(--blue)' : 'var(--amber)'; }
 
+/* FIX: al registrar un traslado el aviso muestra cómo quedaron las dos bolsas,
+   así se confirma en el acto que la plata se movió de una a otra. */
+function mensajeSaldos(base,tipo){
+  if(!esDeposito(tipo) && !esRetiro(tipo)) return base;
+  var c=calc(state.year);
+  if(state.ocultarSaldos) return base+' · traslado aplicado a las dos cuentas';
+  return base+' · Disponible '+money(c.saldoDisp)+' · Ahorro '+money(c.saldoAhorro);
+}
+
 function addMov(){
   var fecha=document.getElementById('f_fecha').value;
   var tipo=document.getElementById('f_tipo').value;
@@ -647,10 +733,11 @@ function addMov(){
   var desc=document.getElementById('f_desc').value.trim();
   var medio=document.getElementById('f_medio').value;
   var monto=Math.round(+document.getElementById('f_monto').value||0);
-  if(!fecha){ toast('Pon una fecha'); return; }
+  if(!fechaValida(fecha)){ toast('Fecha no válida'); return; }
   if(monto<=0){ toast('Pon un monto mayor a 0'); return; }
   state.movimientos.push({id:uid(),fecha:fecha,tipo:tipo,categoria:cat,descripcion:desc,medio:medio,monto:monto,adjs:[],actualizado:Date.now()});
-  save(); toast('Movimiento agregado'); renderMovimientos();
+  marcarUsado();
+  save(); toast(mensajeSaldos('Movimiento agregado',tipo)); renderAll();
 }
 function delMov(id){
   if(!confirm('¿Borrar este movimiento?')) return;
@@ -659,16 +746,24 @@ function delMov(id){
   state.movimientos=state.movimientos.filter(function(m){return m.id!==id;});
   state.borrados=state.borrados||[];
   state.borrados.push({id:id, actualizado:Date.now()});
-  save(); toast('Movimiento borrado'); renderMovimientos();
+  marcarUsado();
+  save(); toast(mensajeSaldos('Movimiento borrado',_victim&&_victim.tipo)); renderAll();
 }
 function editMov(id){
   var m=state.movimientos.find(function(x){return x.id===id;}); if(!m) return;
   var nf=prompt('Fecha (AAAA-MM-DD):',m.fecha); if(nf===null) return;
   var nmonto=prompt('Monto:',m.monto); if(nmonto===null) return;
   var ndesc=prompt('Descripción:',m.descripcion); if(ndesc===null) return;
-  m.fecha=nf.trim()||m.fecha; m.monto=Math.round(+nmonto||m.monto); m.descripcion=ndesc.trim();
+  /* FIX: antes no se validaba nada. Una fecha tipo "21/08/2026" dejaba el año en
+     NaN y el movimiento seguía afectando el saldo pero desaparecía de todas las
+     tablas y de la lista. */
+  nf=nf.trim();
+  if(nf && !fechaValida(nf)){ toast('Fecha no válida. Usa el formato AAAA-MM-DD'); return; }
+  m.fecha=nf||m.fecha;
+  m.monto=Math.round(+nmonto||m.monto); m.descripcion=ndesc.trim();
   m.actualizado=Date.now();
-  save(); toast('Movimiento actualizado'); renderMovimientos();
+  marcarUsado();
+  save(); toast(mensajeSaldos('Movimiento actualizado',m.tipo)); renderAll();
 }
 
 /* ---------- render: CIERRE ---------- */
@@ -676,7 +771,8 @@ function renderCierre(){
   var el=document.getElementById('cierre');
   var y=state.year, c=calc(y);
   var cm=gastoCatMes(y);
-  var cats=state.categorias.gasto;
+  var info=catsGastoConDatos(cm);
+  var cats=info.cats, huerfanas=info.huerfanas;
   var totMes=new Array(12).fill(0), totAnoGeneral=0;
 
   var html='<div class="card"><h2>Cierre mensual y anual '+y+'</h2><div class="cap">Tus gastos desglosados por categoría, mes a mes. El detalle de cada compra está en Movimientos.</div>';
@@ -688,11 +784,16 @@ function renderCierre(){
     var cells='';
     for(var i=1;i<=12;i++){ var v=row[i]||0; tot+=v; totMes[i-1]+=v; cells+='<td class="num'+(v?'':' mono')+'">'+(v?money(v):'·')+'</td>'; }
     totAnoGeneral+=tot;
-    html+='<tr><td>'+esc(cat)+'</td>'+cells+'<td class="num" style="font-weight:600">'+(tot?money(tot):'·')+'</td></tr>';
+    var orfa=huerfanas.indexOf(cat)>=0;
+    html+='<tr><td>'+esc(cat)+(orfa?' <span style="color:#B45309;font-weight:700" title="Categoría que ya no está en Ajustes">⚠</span>':'')+'</td>'+cells+'<td class="num" style="font-weight:600">'+(tot?money(tot):'·')+'</td></tr>';
   });
   html+='</tbody><tfoot><tr class="totrow"><td>TOTAL GASTOS</td>';
   for(var i=0;i<12;i++){ html+='<td class="num">'+money(totMes[i])+'</td>'; }
-  html+='<td class="num">'+money(totAnoGeneral)+'</td></tr></tfoot></table></div></div>';
+  html+='<td class="num">'+money(totAnoGeneral)+'</td></tr></tfoot></table></div>';
+  if(huerfanas.length){
+    html+='<div class="savings-note"><strong>⚠ Atención:</strong> '+huerfanas.length+' categoría'+(huerfanas.length===1?'':'s')+' con gastos ya no existe'+(huerfanas.length===1?'':'n')+' en Ajustes ('+esc(huerfanas.join(', '))+'). Se incluyen igual en el total para que cuadre con el Resumen. Si quieres, vuelve a crearlas en Ajustes o edita esos movimientos.</div>';
+  }
+  html+='</div>';
 
   // bloque cierre resumen
   html+='<div class="card"><h2>Resultado por mes</h2><div class="cap">Ingresos, gastos, ahorro y resultado de cada mes.</div>';
@@ -704,7 +805,7 @@ function renderCierre(){
   html+=cierreRow('Ahorro neto',c.ahoMes,c.ahoAno);
   // resultado
   var resMes=c.dispMes;
-  html+='<tr class="res"><td>Resultado (Ing − Gas)</td>';
+  html+='<tr class="res"><td>Resultado (Ing − Gas − Aho)</td>';
   for(var k=0;k<12;k++){ html+='<td class="num">'+money(resMes[k])+'</td>'; }
   html+='<td class="num">'+money(c.dispAno)+'</td></tr>';
   html+='</tbody></table></div></div>';
@@ -768,6 +869,11 @@ function renderAjustes(){
   html+='<div class="savings-note"><strong>Traer todo del servidor</strong> borra los movimientos de este dispositivo y los reemplaza por los de la planilla. Úsalo solo la primera vez que conectas la tablet, o si limpiaste el navegador y necesitas recuperar todo.</div>';
   html+='</div>';
 
+  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 18 puntos del sistema: fechas, montos, tipos, categorías, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes y sincronización. Solo lee tus datos: no modifica ni borra nada.</div>';
+  html+='<div style="margin-top:12px"><button class="btn" id="aud_run">🔍 Auditar el sistema</button></div>';
+  html+='<div id="aud_out" style="margin-top:6px"></div>';
+  html+='</div>';
+
   html+='<div class="card"><h2>Datos</h2><div class="cap">Respalda o restablece tu información.</div>';
   html+='<div style="display:flex;gap:10px;flex-wrap:wrap">'
      + '<button class="btn sec" id="exp_json">Exportar respaldo (.json)</button>'
@@ -776,6 +882,8 @@ function renderAjustes(){
      + '<input type="file" id="imp_file" accept=".json" style="display:none">'
      + '<button class="btn danger" id="reset_btn">Restablecer todo</button>'
      + '</div></div>';
+
+  html+='<div class="verfoot">Finanzas Personales · versión <strong>'+APP_VERSION+'</strong> · '+APP_FECHA+'</div>';
 
   el.innerHTML=html;
 
@@ -799,10 +907,14 @@ function renderAjustes(){
     c.token=document.getElementById('sy_token').value.trim();
     syncCfgSet(c);
     if(!c.url||!c.token){ toast('Falta la URL o el token'); syncPintaEstado(); return; }
-    toast('Conectando…'); syncAhora(false);
+    /* FIX: "Guardar y conectar" en un dispositivo recién instalado SUBÍA los 3
+       movimientos de ejemplo antes de que alcanzaras a tocar "Traer todo".
+       Ahora la primera conexión de un dispositivo nuevo solo descarga. */
+    if(state._esNuevo && !c.ultimo){ toast('Conectando y trayendo tus datos…'); syncTraerTodo(true); }
+    else { toast('Conectando…'); syncAhora(false); }
   });
   document.getElementById('sy_ahora').addEventListener('click',function(){ syncAhora(false); });
-  document.getElementById('sy_traer').addEventListener('click',syncTraerTodo);
+  document.getElementById('sy_traer').addEventListener('click',function(){ syncTraerTodo(false); });
   document.getElementById('sy_auto').addEventListener('change',function(){
     var c=syncCfg(); c.auto=this.checked; syncCfgSet(c);
     toast(c.auto?'Sincronización automática activada':'Sincronización automática desactivada');
@@ -810,6 +922,8 @@ function renderAjustes(){
   syncPintaEstado();
   document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
   cargarStatsAdjuntos();
+  document.getElementById('aud_run').addEventListener('click',auditar);
+  if(_ultimaAuditoria) pintarAuditoria();
   document.getElementById('exp_json').addEventListener('click',exportJSON);
   document.getElementById('exp_csv').addEventListener('click',exportCSV);
   document.getElementById('imp_btn').addEventListener('click',function(){document.getElementById('imp_file').click();});
@@ -845,7 +959,7 @@ function cargarStatsAdjuntos(){
 }
 function archivarComprobantes(meses){
   var corte=new Date(); corte.setMonth(corte.getMonth()-meses);
-  var corteISO=corte.toISOString().slice(0,10);
+  var corteISO=isoLocal(corte);
   var objetivo=state.movimientos.filter(function(m){ return m.adjs && m.adjs.length && (meses===0 || m.fecha<corteISO); });
   if(objetivo.length===0){ toast(meses===0?'No hay comprobantes para archivar':'No hay comprobantes de más de '+meses+' meses'); return; }
   var tareas=[];
@@ -878,6 +992,251 @@ function archivarComprobantes(meses){
   }).catch(function(){ toast('Error al leer los comprobantes'); });
 }
 
+/* =================================================================
+   AUDITORÍA INTERNA DEL SISTEMA
+   Solo LEE los datos: nunca modifica ni borra nada.
+   ================================================================= */
+var _ultimaAuditoria=null;
+
+function auditar(){
+  var out=document.getElementById('aud_out');
+  if(out) out.innerHTML='<div class="cap">Revisando…</div>';
+  adjAll().catch(function(){return null;}).then(function(archivos){
+    _ultimaAuditoria=construirAuditoria(archivos);
+    pintarAuditoria();
+  });
+}
+
+function construirAuditoria(archivos){
+  var R=[], movs=state.movimientos||[];
+  function add(estado,titulo,detalle){ R.push({e:estado,t:titulo,d:detalle}); }
+  function lista(arr,max){
+    var n=max||4;
+    var s=arr.slice(0,n).join(' · ');
+    return s+(arr.length>n?' … y '+(arr.length-n)+' más':'');
+  }
+  function fmtMov(m){ return (m.fecha||'sin fecha')+' '+(m.categoria||'?')+' '+money(m.monto); }
+
+  /* 1. estructura */
+  var faltan=[];
+  ['saldoInicialAhorrado','saldoInicialDisponible','categorias','medios','movimientos'].forEach(function(k){
+    if(state[k]===undefined||state[k]===null) faltan.push(k);
+  });
+  add(faltan.length?'err':'ok','Estructura de datos',
+      faltan.length?'Faltan campos: '+faltan.join(', ')
+                   :movs.length+' movimiento'+(movs.length===1?'':'s')+' · '+(state.borrados||[]).length+' registro'+((state.borrados||[]).length===1?'':'s')+' de borrado');
+
+  /* 2. IDs únicos */
+  var vistos={}, dupIds=[];
+  movs.forEach(function(m){ var i=String(m.id); if(vistos[i]) dupIds.push(i); else vistos[i]=1; });
+  add(dupIds.length?'err':'ok','IDs únicos',
+      dupIds.length?dupIds.length+' movimiento(s) comparten ID; la sincronización los pisará entre sí: '+lista(dupIds)
+                   :'Sin duplicados. Cada movimiento tiene identificador propio.');
+
+  /* 3. fechas válidas */
+  var malaFecha=movs.filter(function(m){ return !fechaValida(m.fecha); });
+  add(malaFecha.length?'err':'ok','Formato de fechas',
+      malaFecha.length?malaFecha.length+' movimiento(s) con fecha inválida. Suman en el saldo pero NO aparecen en ninguna tabla anual: '+lista(malaFecha.map(fmtMov))
+                      :'Las '+movs.length+' fechas usan AAAA-MM-DD y existen en el calendario.');
+
+  /* 4. fechas futuras */
+  var hoyISO=todayISO();
+  var futuras=movs.filter(function(m){ return fechaValida(m.fecha) && m.fecha>hoyISO; });
+  add(futuras.length?'warn':'ok','Fechas futuras',
+      futuras.length?futuras.length+' movimiento(s) con fecha posterior a hoy ('+hoyISO+'): '+lista(futuras.map(fmtMov))+'. Revisa que no sean errores de tipeo.'
+                    :'Ningún movimiento está fechado más adelante de hoy.');
+
+  /* 5. montos */
+  var malMonto=movs.filter(function(m){
+    var v=+m.monto; return !isFinite(v)||v<=0||Math.round(v)!==v;
+  });
+  var sospechoso=movs.filter(function(m){ return (+m.monto)>=50000000; });
+  add(malMonto.length?'err':(sospechoso.length?'warn':'ok'),'Montos',
+      malMonto.length?malMonto.length+' movimiento(s) con monto cero, negativo o con decimales: '+lista(malMonto.map(fmtMov))
+      :sospechoso.length?sospechoso.length+' movimiento(s) sobre $50.000.000; verifica que no sobre un dígito: '+lista(sospechoso.map(fmtMov))
+      :'Todos los montos son enteros positivos en pesos.');
+
+  /* 6. tipos reconocidos */
+  var validos=TIPOS.concat(['Traspaso a ahorro','Traspaso a disponible']);
+  var malTipo=movs.filter(function(m){ return validos.indexOf(m.tipo)<0; });
+  add(malTipo.length?'err':'ok','Tipos de movimiento',
+      malTipo.length?malTipo.length+' movimiento(s) con un tipo que el sistema no sabe clasificar; no entran en ningún cálculo: '+lista(malTipo.map(function(m){return fmtMov(m)+' ['+(m.tipo||'vacío')+']';}))
+                    :'Los 6 tipos en uso se clasifican correctamente (ingreso, gasto, depósito o retiro).');
+
+  /* 7. categorías huérfanas */
+  var todasCats=(state.categorias.ingreso||[]).concat(state.categorias.gasto||[],state.categorias.ahorro||[]);
+  var catsHuer={};
+  movs.forEach(function(m){
+    var c=(m.categoria||'').trim();
+    if(!c || todasCats.indexOf(c)<0) catsHuer[c||'(sin categoría)']=(catsHuer[c||'(sin categoría)']||0)+1;
+  });
+  var chk=Object.keys(catsHuer);
+  add(chk.length?'warn':'ok','Categorías',
+      chk.length?chk.length+' categoría(s) usada(s) en movimientos ya no existe(n) en Ajustes: '+lista(chk.map(function(k){return k+' ('+catsHuer[k]+')';}))+'. Siguen sumando en los totales, pero conviene recrearlas.'
+                :'Todas las categorías usadas existen en Ajustes.');
+
+  /* 8. medios de pago */
+  var medHuer={};
+  movs.forEach(function(m){ var d=(m.medio||'').trim(); if(!d||(state.medios||[]).indexOf(d)<0) medHuer[d||'(vacío)']=1; });
+  var mhk=Object.keys(medHuer);
+  add(mhk.length?'warn':'ok','Medios de pago',
+      mhk.length?'Medios no listados en el sistema: '+lista(mhk)+'. Solo afecta la presentación, no los totales.'
+                :'Todos los movimientos tienen un medio de pago válido.');
+
+  /* 9-10. cuadratura de las dos bolsas (recálculo independiente) */
+  var ing=0,gas=0,dep=0,ret=0;
+  movs.forEach(function(m){
+    var v=+m.monto||0;
+    if(m.tipo==='Ingreso') ing+=v;
+    else if(m.tipo==='Gasto') gas+=v;
+    else if(esDeposito(m.tipo)) dep+=v;
+    else if(esRetiro(m.tipo)) ret+=v;
+  });
+  var c=calc(state.year);
+  var dispEsp=state.saldoInicialDisponible+ing-gas-dep+ret;
+  var ahoEsp=state.saldoInicialAhorrado+dep-ret;
+  add(dispEsp===c.saldoDisp?'ok':'err','Cuadratura · Sueldo disponible',
+      dispEsp===c.saldoDisp
+        ?'Inicial '+money(state.saldoInicialDisponible)+' + ingresos '+money(ing)+' − gastos '+money(gas)+' − a ahorro '+money(dep)+' + retiros '+money(ret)+' = <b>'+money(c.saldoDisp)+'</b>'
+        :'Descuadre de '+money(c.saldoDisp-dispEsp)+' entre el saldo mostrado y el recálculo independiente.');
+  add(ahoEsp===c.saldoAhorro?'ok':'err','Cuadratura · Ahorro',
+      ahoEsp===c.saldoAhorro
+        ?'Inicial '+money(state.saldoInicialAhorrado)+' + depósitos '+money(dep)+' − retiros '+money(ret)+' = <b>'+money(c.saldoAhorro)+'</b>'
+        :'Descuadre de '+money(c.saldoAhorro-ahoEsp)+' entre el saldo mostrado y el recálculo independiente.');
+
+  /* 11. conservación del patrimonio: los traslados no crean ni destruyen plata */
+  var patrimonio=c.saldoDisp+c.saldoAhorro;
+  var patEsp=state.saldoInicialDisponible+state.saldoInicialAhorrado+ing-gas;
+  add(patrimonio===patEsp?'ok':'err','Traslados entre bolsas',
+      patrimonio===patEsp
+        ?'Se movieron '+money(dep)+' al ahorro y '+money(ret)+' de vuelta sin alterar tu patrimonio total ('+money(patrimonio)+').'
+        :'Los traslados están alterando el patrimonio total en '+money(patrimonio-patEsp)+'. Hay un error de signo.');
+
+  /* 12. suma mensual = total anual, en cada año con datos */
+  var anos={}; movs.forEach(function(m){ if(fechaValida(m.fecha)) anos[yearOf(m)]=1; });
+  var anosL=Object.keys(anos).map(Number).sort(), fallosMes=[];
+  anosL.forEach(function(a){
+    var k=calc(a);
+    function suma(arr){ return arr.reduce(function(x,y){return x+y;},0); }
+    if(suma(k.ingMes)!==k.ingAno) fallosMes.push(a+' ingresos');
+    if(suma(k.gasMes)!==k.gasAno) fallosMes.push(a+' gastos');
+    if(suma(k.ahoMes)!==k.ahoAno) fallosMes.push(a+' ahorro');
+    if(suma(k.dispMes)!==k.dispAno) fallosMes.push(a+' resultado');
+  });
+  add(fallosMes.length?'err':'ok','Sumatoria mensual vs anual',
+      fallosMes.length?'Los 12 meses no suman el total en: '+lista(fallosMes)
+                      :'En '+(anosL.length||1)+' año(s) con datos, los 12 meses suman exactamente el total anual.');
+
+  /* 13. Resumen vs Cierre mensual */
+  var fallosCierre=[];
+  anosL.forEach(function(a){
+    var cm=gastoCatMes(a), info=catsGastoConDatos(cm), tot=0;
+    info.cats.forEach(function(cat){ var row=cm[cat]||{}; for(var i=1;i<=12;i++) tot+=row[i]||0; });
+    var k=calc(a);
+    if(tot!==k.gasAno) fallosCierre.push(a+': matriz '+money(tot)+' vs resumen '+money(k.gasAno));
+  });
+  add(fallosCierre.length?'err':'ok','Resumen vs Cierre mensual',
+      fallosCierre.length?'El TOTAL GASTOS de la matriz no coincide con el Resumen: '+lista(fallosCierre,2)
+                         :'La matriz de categorías del Cierre cuadra peso a peso con los gastos del Resumen.');
+
+  /* 14. lápidas coherentes */
+  var vivos={}; movs.forEach(function(m){ vivos[String(m.id)]=1; });
+  var zombis=(state.borrados||[]).filter(function(b){ return vivos[String(b.id)]; });
+  add(zombis.length?'err':'ok','Registros de borrado',
+      zombis.length?zombis.length+' movimiento(s) figuran vivos y borrados a la vez; desaparecerán al sincronizar: '+lista(zombis.map(function(b){return b.id;}))
+                   :(state.borrados||[]).length+' borrado(s) registrado(s), ninguno en conflicto con un movimiento vivo.');
+
+  /* 15-16. comprobantes */
+  if(archivos===null){
+    add('warn','Comprobantes','No se pudo leer el almacenamiento de fotos en este dispositivo.');
+    add('warn','Archivos huérfanos','No verificable sin acceso al almacenamiento.');
+  } else {
+    var enDisco={}; archivos.forEach(function(a){ enDisco[a.id]=a; });
+    var refs={}, rotos=[];
+    movs.forEach(function(m){
+      (m.adjs||[]).forEach(function(a){
+        refs[a.aid]=1;
+        if(!enDisco[a.aid]) rotos.push((m.fecha||'?')+' '+(a.nombre||a.aid));
+      });
+    });
+    add(rotos.length?'warn':'ok','Comprobantes enlazados',
+        rotos.length?rotos.length+' comprobante(s) referenciados pero ausentes de este dispositivo (archivados o tomados en otro aparato): '+lista(rotos)
+                    :Object.keys(refs).length+' comprobante(s) referenciados y todos presentes en este dispositivo.');
+    var huerf=archivos.filter(function(a){ return !refs[a.id]; });
+    var mb=huerf.reduce(function(x,a){return x+(a.data?a.data.length*3/4:0);},0)/1048576;
+    add(huerf.length?'warn':'ok','Archivos huérfanos',
+        huerf.length?huerf.length+' archivo(s) ocupan '+mb.toFixed(1)+' MB sin estar ligados a ningún movimiento. Suele pasar tras usar «Traer todo del servidor». <b>No los borres</b> sin revisarlos: pueden ser fotos que solo existen aquí.'
+                    :'Sin archivos sueltos. El almacenamiento está limpio.');
+  }
+
+  /* 17. espacio en localStorage */
+  var bytes=0; try{ bytes=JSON.stringify(state).length; }catch(e){}
+  var kb=Math.round(bytes/1024);
+  add(kb>4000?'warn':'ok','Espacio de datos',
+      kb+' KB usados por los movimientos'+(kb>4000?'. Te acercas al límite del navegador (≈5 MB); exporta un respaldo.':' (el límite del navegador es ≈5 MB).'));
+
+  /* 18. sincronización */
+  var sc=syncCfg();
+  var sinTs=movs.filter(function(m){ return !(+m.actualizado); }).length;
+  if(!syncActivo()){
+    add('warn','Sincronización','Sin configurar en este dispositivo. Los datos viven solo en este navegador: exporta respaldos con frecuencia.');
+  } else if(!sc.ultimo){
+    add('warn','Sincronización','Configurada pero aún sin sincronizar. Toca «Sincronizar ahora».');
+  } else {
+    var hrs=(Date.now()-sc.ultimo)/3600000;
+    add(hrs>48?'warn':'ok','Sincronización',
+        'Última: '+new Date(sc.ultimo).toLocaleString('es-CL')+(hrs>48?' · hace más de 2 días.':' · automática '+(sc.auto?'activada':'desactivada')+'.')
+        +(sinTs?' '+sinTs+' movimiento(s) antiguos sin marca de tiempo: ante un conflicto, siempre pierden.':''));
+  }
+
+  var errs=R.filter(function(x){return x.e==='err';}).length;
+  var warns=R.filter(function(x){return x.e==='warn';}).length;
+  return {filas:R, errores:errs, avisos:warns, ok:R.length-errs-warns, total:R.length, fecha:new Date()};
+}
+
+function pintarAuditoria(){
+  var out=document.getElementById('aud_out'); if(!out||!_ultimaAuditoria) return;
+  var a=_ultimaAuditoria;
+  var veredicto = a.errores ? 'Se encontraron problemas que afectan tus cifras'
+                : a.avisos  ? 'Sistema correcto, con observaciones menores'
+                            : 'Sistema funcionando a la perfección';
+  var h='<div class="aud-head"><strong style="font-size:14px">'+veredicto+'</strong>'
+      + '<span class="aud-tag ok">'+a.ok+' correctas</span>'
+      + (a.avisos?'<span class="aud-tag warn">'+a.avisos+' aviso'+(a.avisos===1?'':'s')+'</span>':'')
+      + (a.errores?'<span class="aud-tag err">'+a.errores+' error'+(a.errores===1?'':'es')+'</span>':'')
+      + '</div>';
+  a.filas.forEach(function(f){
+    var ico=f.e==='ok'?'✅':(f.e==='warn'?'⚠️':'❌');
+    h+='<div class="aud-row '+(f.e==='ok'?'':f.e)+'"><span class="aud-ico">'+ico+'</span>'
+      +'<span class="aud-txt"><span class="aud-t">'+f.t+'</span><span class="aud-d">'+f.d+'</span></span></div>';
+  });
+  h+='<div class="cap" style="margin-top:8px">'+a.total+' verificaciones · versión '+APP_VERSION+' · '+a.fecha.toLocaleString('es-CL')
+    +' · <a href="#" id="aud_print" style="color:var(--navy);font-weight:600">imprimir o guardar como PDF</a></div>';
+  out.innerHTML=h;
+  var p=document.getElementById('aud_print');
+  if(p) p.addEventListener('click',function(e){ e.preventDefault(); imprimirAuditoria(); });
+}
+
+function imprimirAuditoria(){
+  if(!_ultimaAuditoria) return;
+  var a=_ultimaAuditoria;
+  var doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Auditoría</title><style>'
+    +'@page{margin:14mm}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12px}'
+    +'h1{font-size:17px;margin:0 0 4px}.s{color:#555;margin-bottom:14px}'
+    +'div.r{border:1px solid #ccc;border-radius:6px;padding:7px 9px;margin-bottom:5px}'
+    +'b{display:block;font-size:12.5px}span{color:#444}</style></head><body>'
+    +'<h1>Auditoría interna · Finanzas Personales</h1>'
+    +'<div class="s">Versión '+APP_VERSION+' · '+a.fecha.toLocaleString('es-CL')+' · '+a.ok+' correctas, '+a.avisos+' avisos, '+a.errores+' errores</div>';
+  a.filas.forEach(function(f){
+    var ico=f.e==='ok'?'[OK]':(f.e==='warn'?'[AVISO]':'[ERROR]');
+    doc+='<div class="r"><b>'+ico+' '+f.t+'</b><span>'+String(f.d).replace(/<\/?b>/g,'')+'</span></div>';
+  });
+  doc+='</body></html>';
+  var w=window.open('','_blank');
+  if(w){ w.document.write(doc); w.document.close(); w.focus(); setTimeout(function(){w.print();},400); }
+  else toast('Permite las ventanas emergentes para imprimir');
+}
+
 function exportJSON(){
   adjAll().catch(function(){return [];}).then(function(adjuntos){
     var pack={__formato:2,state:state,adjuntos:adjuntos};
@@ -901,13 +1260,13 @@ function importJSON(e){
     try{
       var obj=JSON.parse(r.result);
       if(obj&&obj.__formato===2){
-        state=normalize(obj.state); save();
+        state=normalize(obj.state); state._esNuevo=false; save();
         var adj=obj.adjuntos||[];
         adjClear().then(function(){ return Promise.all(adj.map(function(a){return adjPut(a);})); })
           .catch(function(){})
           .then(function(){ buildYearSel(); renderAll(); toast('Respaldo importado ('+adj.length+' comprobantes)'); });
       } else {
-        state=normalize(obj); save(); buildYearSel(); renderAll(); toast('Respaldo importado');
+        state=normalize(obj); state._esNuevo=false; save(); buildYearSel(); renderAll(); toast('Respaldo importado');
       }
     }catch(err){ toast('Archivo inválido'); }
   };
@@ -963,6 +1322,12 @@ function syncPintaEstado(){
 /* lo que se envía: movimientos vivos + lápidas de los borrados.
    Los comprobantes (adjs) NO viajan: son locales de cada dispositivo. */
 function syncPayload(){
+  /* FIX: mientras el dispositivo siga "recién instalado" (el usuario aún no ha
+     creado, editado ni borrado nada), no se sube ningún movimiento. Así los 3
+     movimientos de ejemplo del DEFAULT nunca llegan a la planilla. Solo se baja. */
+  if(state._esNuevo){
+    return { token: syncCfg().token, movimientos: [], configActualizado: 0 };
+  }
   var movs=state.movimientos.map(function(m){
     return {id:String(m.id), fecha:m.fecha||'', tipo:m.tipo||'', categoria:m.categoria||'',
             descripcion:m.descripcion||'', medio:m.medio||'', monto:+m.monto||0,
@@ -989,6 +1354,12 @@ function syncPayload(){
    "actualizado" más alto. Devuelve cuántos cambios se aplicaron. */
 function syncAplicar(resp){
   var localPorId={}, lapidas={}, cambios=0;
+  /* FIX: si este dispositivo está recién instalado y el servidor trae datos
+     reales, se descartan los movimientos de ejemplo en vez de sumarlos a los
+     tuyos (antes quedaban conviviendo y descuadraban el saldo). */
+  if(state._esNuevo && (resp.movimientos||[]).length){
+    state.movimientos=[]; state.borrados=[]; state._esNuevo=false; cambios++;
+  }
   state.movimientos.forEach(function(m){ localPorId[String(m.id)]=m; });
   (state.borrados||[]).forEach(function(b){ lapidas[String(b.id)]=+b.actualizado||0; });
 
@@ -1074,9 +1445,9 @@ function syncAhora(silencioso){
 
 /* reemplaza lo local por lo del servidor (primera vez en la tablet,
    o para recuperar después de limpiar el navegador) */
-function syncTraerTodo(){
+function syncTraerTodo(sinPreguntar){
   if(!syncActivo()){ toast('Primero configura la URL y el token'); return; }
-  if(!confirm('Esto reemplaza los movimientos de ESTE dispositivo por los de la planilla. ¿Continuar?')) return;
+  if(!sinPreguntar && !confirm('Esto reemplaza los movimientos de ESTE dispositivo por los de la planilla. ¿Continuar?')) return;
 
   var c=syncCfg();
   syncPinta('work','descargando…');
@@ -1099,6 +1470,7 @@ function syncTraerTodo(){
       if(g.medios)     state.medios=g.medios;
       state.configActualizado=+resp.configActualizado||0;
     }
+    state._esNuevo=false;
     try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
     var cc=syncCfg(); cc.ultimo=Date.now(); syncCfgSet(cc);
     buildYearSel(); renderAll();
