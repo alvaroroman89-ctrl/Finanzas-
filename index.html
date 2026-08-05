@@ -477,10 +477,14 @@ var DEFAULT = {
   _esNuevo: true         // instalación recién estrenada: aún no tiene datos propios
 };
 
-var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
+var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente","Interés del ahorro","Comisión del ahorro"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
+/* Plata que nace o muere DENTRO de la cuenta de ahorro: intereses, reajustes,
+   comisiones. No pasan por el sueldo disponible, por eso no son traslados. */
+function esIngresoAhorro(t){ return t==='Interés del ahorro'||t==='Interes del ahorro'; }
+function esGastoAhorro(t){ return t==='Comisión del ahorro'||t==='Comision del ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="2.8", APP_FECHA="03-08-2026";
+var APP_VERSION="2.9", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -561,19 +565,27 @@ function calc(year){
     var gas=sumFilter(function(m){return m.tipo==='Gasto'&&yearOf(m)===year&&monthOf(m)===i;});
     var dep=sumFilter(function(m){return esDeposito(m.tipo)&&yearOf(m)===year&&monthOf(m)===i;});
     var ret=sumFilter(function(m){return esRetiro(m.tipo)&&yearOf(m)===year&&monthOf(m)===i;});
-    ingMes.push(ing); gasMes.push(gas); ahoMes.push(dep-ret); dispMes.push(ing-gas-(dep-ret));
+    /* Intereses y comisiones del ahorro: son ingreso y gasto de verdad, pero
+       ocurren dentro del ahorro y no pasan por el sueldo disponible. */
+    var iAho=sumFilter(function(m){return esIngresoAhorro(m.tipo)&&yearOf(m)===year&&monthOf(m)===i;});
+    var gAho=sumFilter(function(m){return esGastoAhorro(m.tipo)&&yearOf(m)===year&&monthOf(m)===i;});
+    var ingT=ing+iAho, gasT=gas+gAho, ahoNeto=dep-ret+iAho-gAho;
+    ingMes.push(ingT); gasMes.push(gasT); ahoMes.push(ahoNeto); dispMes.push(ingT-gasT-ahoNeto);
   }
   var ingAno=ingMes.reduce(function(a,b){return a+b;},0);
   var gasAno=gasMes.reduce(function(a,b){return a+b;},0);
   var ahoAno=ahoMes.reduce(function(a,b){return a+b;},0);
   var dispAno=ingAno-gasAno-ahoAno;
   // saldos reales (todo el historial)
-  var saldoAhorro=state.saldoInicialAhorrado + sumFilter(function(m){return esDeposito(m.tipo);}) - sumFilter(function(m){return esRetiro(m.tipo);});
+  var saldoAhorro=state.saldoInicialAhorrado + sumFilter(function(m){return esDeposito(m.tipo);}) - sumFilter(function(m){return esRetiro(m.tipo);})
+                  + sumFilter(function(m){return esIngresoAhorro(m.tipo);}) - sumFilter(function(m){return esGastoAhorro(m.tipo);});
   var saldoDisp=state.saldoInicialDisponible + sumFilter(function(m){return m.tipo==='Ingreso';}) - sumFilter(function(m){return m.tipo==='Gasto';}) - sumFilter(function(m){return esDeposito(m.tipo);}) + sumFilter(function(m){return esRetiro(m.tipo);});
   // ahorro acumulado por mes hasta hoy
   var hoy=new Date(); var acumInicio=state.saldoInicialAhorrado
-      + sumFilter(function(m){return esDeposito(m.tipo)&&yearOf(m)<year;})
-      - sumFilter(function(m){return esRetiro(m.tipo)&&yearOf(m)<year;});
+    + sumFilter(function(m){return esDeposito(m.tipo)&&yearOf(m)<year;})
+    - sumFilter(function(m){return esRetiro(m.tipo)&&yearOf(m)<year;})
+    + sumFilter(function(m){return esIngresoAhorro(m.tipo)&&yearOf(m)<year;})
+    - sumFilter(function(m){return esGastoAhorro(m.tipo)&&yearOf(m)<year;});
   var acum=[],run=acumInicio;
   for(var j=0;j<12;j++){
     run+=ahoMes[j];
@@ -590,7 +602,7 @@ function gastoPorCategoria(year){
   var map={};
   state.categorias.gasto.forEach(function(c){map[c]=0;});
   state.movimientos.forEach(function(m){
-    if(m.tipo==='Gasto'&&yearOf(m)===year){ if(!(m.categoria in map)) map[m.categoria]=0; map[m.categoria]+=(+m.monto||0); }
+    if((m.tipo==='Gasto'||esGastoAhorro(m.tipo))&&yearOf(m)===year){ if(!(m.categoria in map)) map[m.categoria]=0; map[m.categoria]+=(+m.monto||0); }
   });
   return map;
 }
@@ -599,7 +611,7 @@ function gastoCatMes(year){ // {cat:{mes:monto}}
   var res={};
   state.categorias.gasto.forEach(function(c){ res[c]={}; });
   state.movimientos.forEach(function(m){
-    if(m.tipo==='Gasto'&&yearOf(m)===year){
+    if((m.tipo==='Gasto'||esGastoAhorro(m.tipo))&&yearOf(m)===year){
       var cat=catGasto(m);
       if(!res[cat]) res[cat]={};
       var mm=monthOf(m); res[cat][mm]=(res[cat][mm]||0)+(+m.monto||0);
@@ -984,7 +996,8 @@ function resumenFiltro(list){
   var ing=0,gas=0,dep=0,ret=0;
   list.forEach(function(m){
     var v=+m.monto||0;
-    if(m.tipo==='Ingreso') ing+=v; else if(m.tipo==='Gasto') gas+=v;
+    if(m.tipo==='Ingreso'||esIngresoAhorro(m.tipo)) ing+=v;
+    else if(m.tipo==='Gasto'||esGastoAhorro(m.tipo)) gas+=v;
     else if(esDeposito(m.tipo)) dep+=v; else if(esRetiro(m.tipo)) ret+=v;
   });
   var p=[];
@@ -997,13 +1010,13 @@ function resumenFiltro(list){
 }
 function fld(label,inner,wide){ return '<div class="field'+(wide?' wide':'')+'"><label class="fl">'+label+'</label>'+inner+'</div>'; }
 function fmtFecha(iso){ var p=iso.split('-'); return p[2]+'-'+p[1]+'-'+p[0]; }
-function pill(t){ var cls = t==='Ingreso'?'ing' : t==='Gasto'?'gas' : esDeposito(t)?'aho' : 'ret'; return '<span class="pill '+cls+'">'+t+'</span>'; }
-function colorTipo(t){ return t==='Ingreso'?'var(--green)' : t==='Gasto'?'var(--red)' : esDeposito(t)?'var(--blue)' : 'var(--amber)'; }
+function pill(t){ var cls = (t==='Ingreso'||esIngresoAhorro(t))?'ing' : (t==='Gasto'||esGastoAhorro(t))?'gas' : esDeposito(t)?'aho' : 'ret'; return '<span class="pill '+cls+'">'+t+'</span>'; }
+function colorTipo(t){ return (t==='Ingreso'||esIngresoAhorro(t))?'var(--green)' : (t==='Gasto'||esGastoAhorro(t))?'var(--red)' : esDeposito(t)?'var(--blue)' : 'var(--amber)'; }
 
 /* FIX: al registrar un traslado el aviso muestra cómo quedaron las dos bolsas,
    así se confirma en el acto que la plata se movió de una a otra. */
 function mensajeSaldos(base,tipo){
-  if(!esDeposito(tipo) && !esRetiro(tipo)) return base;
+  if(!esDeposito(tipo) && !esRetiro(tipo) && !esIngresoAhorro(tipo) && !esGastoAhorro(tipo)) return base;
   var c=calc(state.year);
   if(state.ocultarSaldos) return base+' · traslado aplicado a las dos cuentas';
   return base+' · Disponible '+money(c.saldoDisp)+' · Ahorro '+money(c.saldoAhorro);
@@ -1081,7 +1094,7 @@ function guardarMov(nv){
 var _dupAccion=null;
 function avisarDuplicado(nv,iguales,accion){
   _dupAccion=accion;
-  var direccion = (nv.tipo==='Ingreso'||esRetiro(nv.tipo)) ? 'subiría' : 'bajaría';
+  var direccion = (nv.tipo==='Ingreso'||esRetiro(nv.tipo)||esIngresoAhorro(nv.tipo)) ? 'subiría' : 'bajaría';
   var cuenta = (nv.tipo==='Ingreso'||nv.tipo==='Gasto') ? 'tu sueldo disponible'
              : esDeposito(nv.tipo) ? 'tu disponible (y subiría tu ahorro)' : 'tu ahorro (y subiría tu disponible)';
   function fila(m,etq,clase){
@@ -1521,30 +1534,47 @@ function compararBanco(){
     +(falta?'El sistema muestra <b>menos</b> que el banco: falta registrar un ingreso, o hay un gasto de más (quizá repetido).'
            :'El sistema muestra <b>más</b> que el banco: falta registrar un gasto, un cargo automático o una comisión.')
     +'</span></span></div>';
-  h+='<div class="savings-note"><strong>Antes de tocar nada:</strong> revisa tu cartola de los últimos días y busca el movimiento que falta. '
-   + 'Registrarlo es siempre mejor que ajustar el saldo, porque deja explicado dónde se fue la plata. '
+  var pista = (cta==='aho')
+    ? (falta?'En una cuenta de ahorro esto casi siempre son <b>intereses o reajuste</b> que el banco te abonó.'
+            :'En una cuenta de ahorro esto casi siempre es una <b>comisión o cargo</b> del banco.')
+    : (falta?'Busca en tu cartola un abono que no registraste, o un gasto que quedó anotado dos veces.'
+            :'Busca en tu cartola un cargo automático, una comisión o una compra que falta anotar.');
+  h+='<div class="savings-note"><strong>Antes de tocar nada:</strong> revisa tu cartola. '+pista+'<br><br>'
+   + 'Registrar la diferencia como movimiento es mejor que ajustar el saldo, porque deja explicado de dónde salió. '
    + 'Corre también la auditoría de abajo: detecta movimientos repetidos.</div>';
   h+='<div class="modal-foot" style="border-radius:10px;border:1px solid var(--line);margin-top:12px">';
-  if(cta==='disp') h+='<button class="btn" id="cua_mov">Registrar la diferencia como movimiento</button>';
+  h+='<button class="btn" id="cua_mov">Registrar la diferencia como movimiento</button>';
   h+='<button class="btn sec" id="cua_aj">Ajustar el saldo inicial</button></div>';
   out.innerHTML=h;
   var bm=document.getElementById('cua_mov');
-  if(bm) bm.addEventListener('click',function(){ registrarDiferencia(dif); });
+  if(bm) bm.addEventListener('click',function(){ registrarDiferencia(dif,cta); });
   document.getElementById('cua_aj').addEventListener('click',function(){
     if(cta==='disp') state.saldoInicialDisponible+=dif; else state.saldoInicialAhorrado+=dif;
     marcarConfig(cta==='disp'?'disp':'aho');
     save(); renderAll(); toast(nombre+' ajustado a '+money(real));
   });
 }
-function registrarDiferencia(dif){
-  var tipo=dif>0?'Ingreso':'Gasto', cat='Ajuste de saldo';
-  var lista=dif>0?state.categorias.ingreso:state.categorias.gasto;
+function registrarDiferencia(dif,cta){
+  var tipo,cat,lista,desc;
+  if(cta==='aho'){
+    /* En el ahorro la diferencia no pasa por el sueldo: se registra como
+       interés o comisión de la propia cuenta. */
+    tipo = dif>0 ? 'Interés del ahorro' : 'Comisión del ahorro';
+    cat  = dif>0 ? 'Interés / reajuste' : 'Comisión del ahorro';
+    lista=state.categorias.ahorro;
+    desc = dif>0 ? 'Interés abonado por el banco' : 'Comisión cobrada por el banco';
+  } else {
+    tipo = dif>0 ? 'Ingreso' : 'Gasto';
+    cat  = 'Ajuste de saldo';
+    lista= dif>0 ? state.categorias.ingreso : state.categorias.gasto;
+    desc = 'Cuadratura con la cartola del banco';
+  }
   if(lista.indexOf(cat)<0){ lista.push(cat); marcarConfig('cats'); }
   state.movimientos.push({id:uid(),fecha:todayISO(),tipo:tipo,categoria:cat,
-    descripcion:'Cuadratura con la cartola del banco',medio:state.medios[0]||'Débito',
+    descripcion:desc,medio:state.medios[0]||'Débito',
     monto:Math.abs(dif),adjs:[],actualizado:Date.now()});
   marcarUsado(); save(); renderAll();
-  toast('Registrado como '+tipo.toLowerCase()+' de '+money(Math.abs(dif)));
+  toast('Registrado: '+tipo+' de '+money(Math.abs(dif)));
 }
 
 /* =================================================================
@@ -1652,29 +1682,32 @@ function construirAuditoria(archivos){
                 :'Todos los movimientos tienen un medio de pago válido.');
 
   /* 9-10. cuadratura de las dos bolsas (recálculo independiente) */
-  var ing=0,gas=0,dep=0,ret=0;
+  var ing=0,gas=0,dep=0,ret=0,iAho=0,gAho=0;
   movs.forEach(function(m){
     var v=+m.monto||0;
     if(m.tipo==='Ingreso') ing+=v;
     else if(m.tipo==='Gasto') gas+=v;
     else if(esDeposito(m.tipo)) dep+=v;
     else if(esRetiro(m.tipo)) ret+=v;
+    else if(esIngresoAhorro(m.tipo)) iAho+=v;
+    else if(esGastoAhorro(m.tipo)) gAho+=v;
   });
   var c=calc(state.year);
   var dispEsp=state.saldoInicialDisponible+ing-gas-dep+ret;
-  var ahoEsp=state.saldoInicialAhorrado+dep-ret;
+  var ahoEsp=state.saldoInicialAhorrado+dep-ret+iAho-gAho;
   add(dispEsp===c.saldoDisp?'ok':'err','Cuadratura · Sueldo disponible',
       dispEsp===c.saldoDisp
         ?'Inicial '+money(state.saldoInicialDisponible)+' + ingresos '+money(ing)+' − gastos '+money(gas)+' − a ahorro '+money(dep)+' + retiros '+money(ret)+' = <b>'+money(c.saldoDisp)+'</b>'
         :'Descuadre de '+money(c.saldoDisp-dispEsp)+' entre el saldo mostrado y el recálculo independiente.');
   add(ahoEsp===c.saldoAhorro?'ok':'err','Cuadratura · Ahorro',
       ahoEsp===c.saldoAhorro
-        ?'Inicial '+money(state.saldoInicialAhorrado)+' + depósitos '+money(dep)+' − retiros '+money(ret)+' = <b>'+money(c.saldoAhorro)+'</b>'
+        ?'Inicial '+money(state.saldoInicialAhorrado)+' + depósitos '+money(dep)+' − retiros '+money(ret)
+          +(iAho?' + intereses '+money(iAho):'')+(gAho?' − comisiones '+money(gAho):'')+' = <b>'+money(c.saldoAhorro)+'</b>'
         :'Descuadre de '+money(c.saldoAhorro-ahoEsp)+' entre el saldo mostrado y el recálculo independiente.');
 
   /* 11. conservación del patrimonio: los traslados no crean ni destruyen plata */
   var patrimonio=c.saldoDisp+c.saldoAhorro;
-  var patEsp=state.saldoInicialDisponible+state.saldoInicialAhorrado+ing-gas;
+  var patEsp=state.saldoInicialDisponible+state.saldoInicialAhorrado+ing-gas+iAho-gAho;
   add(patrimonio===patEsp?'ok':'err','Traslados entre bolsas',
       patrimonio===patEsp
         ?'Se movieron '+money(dep)+' al ahorro y '+money(ret)+' de vuelta sin alterar tu patrimonio total ('+money(patrimonio)+').'
