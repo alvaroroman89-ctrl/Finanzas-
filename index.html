@@ -230,6 +230,15 @@
   .vimg{width:100%;border-radius:8px;border:1px solid var(--line-2);display:block;cursor:zoom-in}
   .vimg.zoom{width:auto;max-width:none;cursor:zoom-out}
 
+  /* ---------- aviso de duplicado ---------- */
+  .dup-intro{font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5}
+  .dup-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .dup-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 13px;margin-bottom:9px;background:var(--surface-2);position:relative}
+  .dup-item.nuevo{border-color:var(--back);background:var(--back-bg)}
+  .dup-tag{display:block;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;font-weight:700;color:var(--muted);margin-bottom:5px}
+  .dup-item.nuevo .dup-tag{color:var(--back)}
+  .dup-line{font-size:14px;color:var(--ink)}
+  .dup-line strong{font-weight:700}
   /* ---------- editor de movimiento ---------- */
   .modal{position:fixed;inset:0;background:rgba(9,42,37,.62);backdrop-filter:blur(3px);z-index:70;display:none;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto}
   .modal.show{display:flex;animation:fadein .2s ease}
@@ -366,6 +375,19 @@
     <div class="cap" style="margin-top:8px">🖨 imprimir o guardar como PDF · ⬇ descargar · toca una foto para ampliarla</div>
   </div>
 </div>
+<div class="modal" id="dup_modal">
+  <div class="modal-box">
+    <div class="modal-top">
+      <h3>⚠ Posible movimiento repetido</h3>
+      <button class="btn sec sm" id="dup_cerrar">Cerrar</button>
+    </div>
+    <div id="dup_body" style="padding:18px"></div>
+    <div class="modal-foot">
+      <button class="btn sec" id="dup_igual">Agregar de todos modos</button>
+      <button class="btn" id="dup_cancelar">Cancelar</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="edit_modal">
   <div class="modal-box">
     <div class="modal-top">
@@ -458,7 +480,7 @@ var DEFAULT = {
 var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="2.5", APP_FECHA="03-08-2026";
+var APP_VERSION="2.8", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -486,6 +508,7 @@ function normalize(s){
   if(!s.cfgTs||typeof s.cfgTs!=='object') s.cfgTs={};
   ['disp','aho','cats','med'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
+  s.avisoDuplicado=(s.avisoDuplicado==='amplio')?'amplio':'exacto';
   s.movimientos.forEach(function(m){
     if(m.adj && !m.adjs){ m.adjs=[{aid:m.id,nombre:m.adj.nombre,mime:m.adj.mime,kb:m.adj.kb||0}]; delete m.adj; }
     if(!m.adjs) m.adjs=[];
@@ -986,18 +1009,115 @@ function mensajeSaldos(base,tipo){
   return base+' · Disponible '+money(c.saldoDisp)+' · Ahorro '+money(c.saldoAhorro);
 }
 
+/* Normaliza la descripción para comparar: sin mayúsculas, sin tildes y sin
+   espacios de más. Así "Desayuno", "desayuno" y "DESAYUNO " son lo mismo. */
+function normDesc(t){
+  return String(t==null?'':t).toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+/* La alerta se dispara cuando coinciden fecha, tipo, categoría, MONTO y
+   DESCRIPCIÓN. Así "Desayuno $2.700" y "Almuerzo $2.700" del mismo día conviven
+   sin molestar, pero "Desayuno $2.700" dos veces sí avisa. */
+var _dupEtiqueta=null;
+function modoAviso(){ return state.avisoDuplicado==='amplio'?'amplio':'exacto'; }
+/* En modo "exacto" (por defecto) exige que coincida también la descripción.
+   En modo "amplio" basta el mismo monto el mismo día, aunque el concepto
+   sea otro: avisa más, pero no deja pasar nada.
+   excluirId sirve al editar, para no compararse consigo mismo. */
+function buscarParecido(nv,excluirId){
+  var d=normDesc(nv.descripcion), amplio=(modoAviso()==='amplio');
+  return state.movimientos.filter(function(m){
+    if(excluirId && m.id===excluirId) return false;
+    if(m.fecha!==nv.fecha || m.tipo!==nv.tipo) return false;
+    if((+m.monto||0)!==nv.monto) return false;
+    if(amplio) return true;
+    return (m.categoria||'')===(nv.categoria||'') && normDesc(m.descripcion)===d;
+  });
+}
+/* Cuenta los repetidos que ya existen guardados (para avisar tras sincronizar). */
+function contarRepetidos(){
+  var firmas={}, n=0, amplio=(modoAviso()==='amplio');
+  state.movimientos.forEach(function(m){
+    var f=amplio ? [m.fecha,m.tipo,m.monto].join('|')
+                 : [m.fecha,m.tipo,m.categoria,m.monto,normDesc(m.descripcion)].join('|');
+    if(firmas[f]) n++; else firmas[f]=1;
+  });
+  return n;
+}
+/* Mismo concepto y mismo día pero otro monto: no es duplicado, es un segundo
+   consumo. Sirve para informar sin bloquear. */
+function buscarMismoConcepto(nv){
+  var d=normDesc(nv.descripcion);
+  if(!d) return [];
+  return state.movimientos.filter(function(m){
+    return m.fecha===nv.fecha && m.tipo===nv.tipo
+        && normDesc(m.descripcion)===d && (+m.monto||0)!==nv.monto;
+  });
+}
 function addMov(){
-  var fecha=document.getElementById('f_fecha').value;
-  var tipo=document.getElementById('f_tipo').value;
-  var cat=document.getElementById('f_cat').value;
-  var desc=limpiarTexto(document.getElementById('f_desc').value);
-  var medio=document.getElementById('f_medio').value;
-  var monto=parseMonto(document.getElementById('f_monto').value);
-  if(!fechaValida(fecha)){ toast('Fecha no válida'); return; }
-  if(!isFinite(monto)||monto<=0){ toast('Escribe un monto mayor a 0'); return; }
-  state.movimientos.push({id:uid(),fecha:fecha,tipo:tipo,categoria:cat,descripcion:desc,medio:medio,monto:monto,adjs:[],actualizado:Date.now()});
+  var nv={
+    fecha:document.getElementById('f_fecha').value,
+    tipo:document.getElementById('f_tipo').value,
+    categoria:document.getElementById('f_cat').value,
+    descripcion:limpiarTexto(document.getElementById('f_desc').value),
+    medio:document.getElementById('f_medio').value,
+    monto:parseMonto(document.getElementById('f_monto').value)
+  };
+  if(!fechaValida(nv.fecha)){ toast('Fecha no válida'); return; }
+  if(!isFinite(nv.monto)||nv.monto<=0){ toast('Escribe un monto mayor a 0'); return; }
+  var iguales=buscarParecido(nv);
+  if(iguales.length) avisarDuplicado(nv,iguales,function(){ guardarMov(nv); });
+  else guardarMov(nv);
+}
+function guardarMov(nv){
+  state.movimientos.push({id:uid(),fecha:nv.fecha,tipo:nv.tipo,categoria:nv.categoria,
+    descripcion:nv.descripcion,medio:nv.medio,monto:nv.monto,adjs:[],actualizado:Date.now()});
   marcarUsado();
-  save(); toast(mensajeSaldos('Movimiento agregado',tipo)); renderAll();
+  save(); toast(mensajeSaldos('Movimiento agregado',nv.tipo)); renderAll();
+}
+/* Aviso antes de guardar: muestra lo que ya está registrado, lo que estás por
+   agregar y el efecto exacto en el saldo si de verdad es una repetición. */
+var _dupAccion=null;
+function avisarDuplicado(nv,iguales,accion){
+  _dupAccion=accion;
+  var direccion = (nv.tipo==='Ingreso'||esRetiro(nv.tipo)) ? 'subiría' : 'bajaría';
+  var cuenta = (nv.tipo==='Ingreso'||nv.tipo==='Gasto') ? 'tu sueldo disponible'
+             : esDeposito(nv.tipo) ? 'tu disponible (y subiría tu ahorro)' : 'tu ahorro (y subiría tu disponible)';
+  function fila(m,etq,clase){
+    return '<div class="dup-item '+(clase||'')+'"><span class="dup-tag">'+etq+'</span>'
+      + '<div class="dup-line"><strong>'+money(m.monto)+'</strong> · '+esc(m.tipo)+' · '+esc(m.categoria||'sin categoría')+'</div>'
+      + '<div class="dup-sub">'+fmtFecha(m.fecha)+' · '+esc(m.medio||'—')
+      + (m.descripcion?' · '+esc(m.descripcion):'')+'</div></div>';
+  }
+  var concepto=nv.descripcion?'"'+esc(nv.descripcion)+'"':'sin descripción';
+  var h='<p class="dup-intro">Ya tienes '+(iguales.length===1?'un movimiento':iguales.length+' movimientos')
+      + ' de <b>'+concepto+'</b> por <b>'+money(nv.monto)+'</b> el '+fmtFecha(nv.fecha)
+      + '. Coincide todo: fecha, tipo, categoría, monto y descripción.</p>';
+  iguales.slice(0,3).forEach(function(m){ h+=fila(m,'Ya registrado'); });
+  if(iguales.length>3) h+='<p class="dup-sub">…y '+(iguales.length-3)+' más.</p>';
+  h+=fila(nv,_dupEtiqueta||'Por agregar','nuevo');
+  h+='<div class="savings-note">Si lo agregas y resulta ser una repetición, '+cuenta+' '+direccion
+   + ' <b>'+money(nv.monto)+'</b> de más y no vas a cuadrar con tu cartola.<br><br>'
+   + '<b>¿Es un consumo distinto?</b> Cambia la descripción (por ejemplo «Desayuno» y «Almuerzo») '
+   + 'y quedan como dos movimientos separados sin este aviso.</div>';
+  var otros=buscarMismoConcepto(nv);
+  if(otros.length){
+    h+='<p class="dup-sub" style="margin-top:10px">Nota: hoy ya registraste '+otros.length+' movimiento(s) '
+     + 'de '+concepto+' por otro monto. Eso es normal si consumiste dos veces.</p>';
+  }
+  document.getElementById('dup_body').innerHTML=h;
+  document.getElementById('dup_modal').classList.add('show');
+}
+function cerrarDuplicado(){ _dupAccion=null; document.getElementById('dup_modal').classList.remove('show'); }
+function initDuplicado(){
+  document.getElementById('dup_cancelar').addEventListener('click',cerrarDuplicado);
+  document.getElementById('dup_cerrar').addEventListener('click',cerrarDuplicado);
+  document.getElementById('dup_igual').addEventListener('click',function(){
+    var f=_dupAccion; cerrarDuplicado(); if(f) f();
+  });
+  var ov=document.getElementById('dup_modal');
+  ov.addEventListener('click',function(e){ if(e.target===ov) cerrarDuplicado(); });
 }
 function delMov(id){
   if(!confirm('¿Borrar este movimiento?')) return;
@@ -1041,15 +1161,21 @@ function guardarEditor(){
   if(!fechaValida(fecha)){ toast('Elige una fecha válida'); return; }
   var monto=parseMonto(document.getElementById('ed_monto').value);
   if(!isFinite(monto)||monto<=0){ toast('Escribe un monto mayor a 0'); return; }
-  m.fecha=fecha;
-  m.tipo=document.getElementById('ed_tipo').value;
-  m.categoria=document.getElementById('ed_cat').value;
-  m.medio=document.getElementById('ed_medio').value;
-  m.descripcion=limpiarTexto(document.getElementById('ed_desc').value);
-  m.monto=monto;
-  m.actualizado=Date.now();
-  marcarUsado();
-  save(); cerrarEditor(); toast(mensajeSaldos('Movimiento actualizado',m.tipo)); renderAll();
+  var nv={fecha:fecha,tipo:document.getElementById('ed_tipo').value,
+    categoria:document.getElementById('ed_cat').value,
+    medio:document.getElementById('ed_medio').value,
+    descripcion:limpiarTexto(document.getElementById('ed_desc').value),monto:monto};
+  /* Editar también puede crear un duplicado: se avisa igual que al agregar. */
+  var iguales=buscarParecido(nv,m.id);
+  function aplicar(){
+    m.fecha=nv.fecha; m.tipo=nv.tipo; m.categoria=nv.categoria;
+    m.medio=nv.medio; m.descripcion=nv.descripcion; m.monto=nv.monto;
+    m.actualizado=Date.now();
+    marcarUsado();
+    save(); cerrarEditor(); toast(mensajeSaldos('Movimiento actualizado',m.tipo)); renderAll();
+  }
+  if(iguales.length){ _dupEtiqueta='Quedaría así'; avisarDuplicado(nv,iguales,function(){ _dupEtiqueta=null; aplicar(); }); }
+  else { _dupEtiqueta=null; aplicar(); }
 }
 function borrarDesdeEditor(){
   var id=_editId; if(!id) return;
@@ -1180,6 +1306,12 @@ function renderAjustes(){
   html+='<div id="cua_out"></div></div>';
 
   html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 18 puntos del sistema: fechas, montos, tipos, categorías, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes y sincronización. Solo lee tus datos: no modifica ni borra nada.</div>';
+  html+='<div class="filters" style="margin-bottom:4px">'
+      + fld('Cuándo avisar de un repetido','<select id="aud_modo">'
+        + '<option value="exacto"'+(modoAviso()==='exacto'?' selected':'')+'>Mismo día, monto y descripción (recomendado)</option>'
+        + '<option value="amplio"'+(modoAviso()==='amplio'?' selected':'')+'>Mismo día y monto, aunque cambie la descripción</option>'
+        + '</select>')
+      + '</div>';
   html+='<div style="margin-top:12px"><button class="btn" id="aud_run">🔍 Auditar el sistema</button></div>';
   html+='<div id="aud_out" style="margin-top:6px"></div>';
   html+='</div>';
@@ -1233,6 +1365,11 @@ function renderAjustes(){
   document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
   cargarStatsAdjuntos();
   document.getElementById('cua_ver').addEventListener('click',compararBanco);
+  document.getElementById('aud_modo').addEventListener('change',function(){
+    state.avisoDuplicado=this.value; save();
+    toast(this.value==='amplio'?'Avisará ante cualquier monto repetido del mismo día':'Avisará solo si además coincide la descripción');
+    if(_ultimaAuditoria) auditar();
+  });
   document.getElementById('aud_run').addEventListener('click',auditar);
   if(_ultimaAuditoria) pintarAuditoria();
   document.getElementById('exp_json').addEventListener('click',exportJSON);
@@ -1460,12 +1597,15 @@ function construirAuditoria(archivos){
   /* 3b. posibles duplicados: mismo día, mismo tipo, misma categoría, mismo monto */
   var firmas={}, dobles=[];
   movs.forEach(function(m){
-    var f=[m.fecha,m.tipo,m.categoria,m.monto].join('|');
+    /* La descripción entra en la comparación: dos cafés de $2.700 el mismo día
+       con descripciones distintas son compras reales, no un duplicado. */
+    var f=(modoAviso()==='amplio') ? [m.fecha,m.tipo,m.monto].join('|')
+                                    : [m.fecha,m.tipo,m.categoria,m.monto,normDesc(m.descripcion)].join('|');
     if(firmas[f]){ if(firmas[f]===1) dobles.push(m); firmas[f]++; } else firmas[f]=1;
   });
   add(dobles.length?'warn':'ok','Movimientos repetidos',
-      dobles.length?dobles.length+' movimiento(s) se repiten exactamente (mismo día, tipo, categoría y monto). Si registraste algo dos veces, tu saldo queda descuadrado: '+lista(dobles.map(fmtMov))
-                   :'Ningún movimiento aparece duplicado.');
+      dobles.length?dobles.length+' movimiento(s) coinciden en fecha, tipo, categoría, <b>monto y descripción</b>. Revisa si es una repetición: '+lista(dobles.map(function(m){return fmtMov(m)+(m.descripcion?' («'+m.descripcion+'»)':'');}))+'. Si son consumos distintos del mismo día, dale una descripción propia a cada uno y el aviso desaparece.'
+                   :'Ningún movimiento aparece repetido. Los que comparten día y monto tienen descripciones distintas, así que se cuentan como consumos separados.');
 
   /* 4. fechas futuras */
   var hoyISO=todayISO();
@@ -1781,6 +1921,14 @@ function syncPayload(){
 
 /* fusiona la respuesta del servidor con lo local. Gana la versión con
    "actualizado" más alto. Devuelve cuántos cambios se aplicaron. */
+/* Tras sincronizar puede llegar un movimiento que el otro aparato registró
+   dos veces. Se avisa al tiro en vez de esperar a que corras la auditoría. */
+var _repAntes=0;
+function avisarRepetidosTrasSync(){
+  var n=contarRepetidos();
+  if(n>_repAntes && n>0) toast('⚠ '+n+' movimiento'+(n===1?'':'s')+' repetido'+(n===1?'':'s')+' · revisa la auditoría en Ajustes');
+  _repAntes=n;
+}
 function syncAplicar(resp){
   var localPorId={}, lapidas={}, cambios=0;
   /* FIX: si este dispositivo está recién instalado y el servidor trae datos
@@ -1907,7 +2055,7 @@ function syncTraerTodo(sinPreguntar){
     state._esNuevo=false;
     try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
     var cc=syncCfg(); cc.ultimo=Date.now(); syncCfgSet(cc);
-    buildYearSel(); renderAll();
+    buildYearSel(); renderAll(); avisarRepetidosTrasSync();
     toast(state.movimientos.length+' movimientos traídos del servidor');
   })
   .catch(function(err){ syncPinta('err','error'); toast('No se pudo descargar: '+err.message); });
@@ -1964,6 +2112,7 @@ document.getElementById('syncBtn').addEventListener('click',function(){ syncAhor
 
 initVisor();
 initEditor();
+initDuplicado();
 buildYearSel();
 renderAll();
 syncPintaEstado();
