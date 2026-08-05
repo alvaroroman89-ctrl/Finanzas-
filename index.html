@@ -211,8 +211,10 @@
     display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);
     border:1px solid var(--line);border-radius:999px;padding:5px 7px 5px 13px;font-size:12.5px;
   }
-  .chip button{border:none;background:none;color:var(--faint);cursor:pointer;font-size:15px;line-height:1;padding:0 4px;border-radius:50%}
-  .chip button:hover{color:var(--out)}
+  .chip button{border:none;background:none;color:var(--faint);cursor:pointer;font-size:14px;line-height:1;padding:0 3px;border-radius:50%}
+  .chip button.ren:hover{color:var(--save)}
+  .chip button.del:hover{color:var(--out)}
+  .chip-n{background:var(--line-2);color:var(--muted);border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:700;margin-left:2px}
   .addcat{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
   .addcat input{flex:1;min-width:180px}
 
@@ -456,7 +458,7 @@ var DEFAULT = {
 var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="2.4", APP_FECHA="03-08-2026";
+var APP_VERSION="2.5", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -1169,6 +1171,14 @@ function renderAjustes(){
   html+='<div class="savings-note"><strong>Traer todo del servidor</strong> borra los movimientos de este dispositivo y los reemplaza por los de la planilla. Úsalo solo la primera vez que conectas la tablet, o si limpiaste el navegador y necesitas recuperar todo.</div>';
   html+='</div>';
 
+  html+='<div class="card"><h2>Cuadratura con el banco</h2><div class="cap">Escribe el saldo real que ves en tu cartola y el sistema te dice en cuánto difiere y cómo resolverlo sin descuadrar tu historial.</div>';
+  html+='<div class="filters">'
+      + fld('Cuenta','<select id="cua_cta"><option value="disp">Sueldo disponible</option><option value="aho">Ahorro</option></select>')
+      + fld('Saldo real del banco','<input type="text" inputmode="numeric" id="cua_real" placeholder="Ej: 16.456">')
+      + '<div class="field"><label class="fl">&nbsp;</label><button class="btn" id="cua_ver">Comparar</button></div>'
+      + '</div>';
+  html+='<div id="cua_out"></div></div>';
+
   html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 18 puntos del sistema: fechas, montos, tipos, categorías, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes y sincronización. Solo lee tus datos: no modifica ni borra nada.</div>';
   html+='<div style="margin-top:12px"><button class="btn" id="aud_run">🔍 Auditar el sistema</button></div>';
   html+='<div id="aud_out" style="margin-top:6px"></div>';
@@ -1222,6 +1232,7 @@ function renderAjustes(){
   syncPintaEstado();
   document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
   cargarStatsAdjuntos();
+  document.getElementById('cua_ver').addEventListener('click',compararBanco);
   document.getElementById('aud_run').addEventListener('click',auditar);
   if(_ultimaAuditoria) pintarAuditoria();
   document.getElementById('exp_json').addEventListener('click',exportJSON);
@@ -1234,18 +1245,71 @@ function renderAjustes(){
     }
   });
 }
+/* Cuántos movimientos usan una categoría (para no borrarla a ciegas). */
+function usosDeCategoria(c){
+  return state.movimientos.filter(function(m){ return (m.categoria||'')===c; }).length;
+}
 function renderChips(kind){
   var box=document.getElementById('catlist_'+kind);
   box.innerHTML=state.categorias[kind].map(function(c){
-    return '<span class="chip">'+esc(c)+'<button data-k="'+kind+'" data-c="'+esc(c)+'">×</button></span>';
+    var n=usosDeCategoria(c);
+    return '<span class="chip">'+esc(c)
+      + (n?'<span class="chip-n" title="'+n+' movimiento(s) usan esta categoría">'+n+'</span>':'')
+      + '<button class="ren" data-k="'+kind+'" data-c="'+esc(c)+'" title="Renombrar">\u270E</button>'
+      + '<button class="del" data-k="'+kind+'" data-c="'+esc(c)+'" title="Quitar">\u00D7</button></span>';
   }).join('');
-  box.querySelectorAll('button').forEach(function(b){
-    b.addEventListener('click',function(){
-      var k=b.getAttribute('data-k'), c=b.getAttribute('data-c');
-      state.categorias[k]=state.categorias[k].filter(function(x){return x!==c;});
-      marcarConfig('cats'); save(); renderChips(k); toast('Categoría quitada');
-    });
+  box.querySelectorAll('button.ren').forEach(function(b){
+    b.addEventListener('click',function(){ renombrarCategoria(b.getAttribute('data-k'), b.getAttribute('data-c')); });
   });
+  box.querySelectorAll('button.del').forEach(function(b){
+    b.addEventListener('click',function(){ quitarCategoria(b.getAttribute('data-k'), b.getAttribute('data-c')); });
+  });
+}
+/* Renombrar arrastra consigo todos los movimientos que la usaban:
+   antes cambiar el nombre dejaba esos movimientos huérfanos. */
+function renombrarCategoria(k,c){
+  var nuevo=limpiarTexto(prompt('Nuevo nombre para "'+c+'":', c)||'');
+  if(!nuevo || nuevo===c) return;
+  if(state.categorias[k].indexOf(nuevo)>=0 && nuevo!==c){
+    if(!confirm('"'+nuevo+'" ya existe. ¿Fundir "'+c+'" dentro de ella?')) return;
+    state.categorias[k]=state.categorias[k].filter(function(x){return x!==c;});
+  } else {
+    state.categorias[k]=state.categorias[k].map(function(x){ return x===c?nuevo:x; });
+  }
+  var n=0;
+  state.movimientos.forEach(function(m){
+    if((m.categoria||'')===c){ m.categoria=nuevo; m.actualizado=Date.now(); n++; }
+  });
+  marcarConfig('cats'); marcarUsado(); save(); renderAll();
+  toast('Renombrada'+(n?' · '+n+' movimiento'+(n===1?'':'s')+' actualizado'+(n===1?'':'s'):''));
+}
+/* Quitar avisa si está en uso y deja reasignar esos movimientos,
+   para que no desaparezcan de la matriz del Cierre. */
+function quitarCategoria(k,c){
+  var n=usosDeCategoria(c);
+  if(n){
+    var otras=state.categorias[k].filter(function(x){return x!==c;});
+    var msg=n+' movimiento'+(n===1?'':'s')+' usa'+(n===1?'':'n')+' "'+c+'".\n\n'
+      +'Escribe el nombre de la categoría a la que quieres pasarlos'
+      +(otras.length?' (por ejemplo: '+otras.slice(0,4).join(', ')+')':'')
+      +',\no deja el campo vacío para quitar la categoría igual y dejarlos sin clasificar.';
+    var destino=prompt(msg,otras[0]||'');
+    if(destino===null) return;
+    destino=limpiarTexto(destino);
+    if(destino){
+      if(state.categorias[k].indexOf(destino)<0) state.categorias[k].push(destino);
+      state.movimientos.forEach(function(m){
+        if((m.categoria||'')===c){ m.categoria=destino; m.actualizado=Date.now(); }
+      });
+      toast(n+' movimiento'+(n===1?'':'s')+' pasado'+(n===1?'':'s')+' a "'+destino+'"');
+    } else {
+      if(!confirm('Los '+n+' movimientos quedarán sin categoría. Seguirán sumando en tus totales. ¿Continuar?')) return;
+      toast('Categoría quitada · '+n+' movimiento'+(n===1?'':'s')+' sin clasificar');
+    }
+    marcarUsado();
+  } else toast('Categoría quitada');
+  state.categorias[k]=state.categorias[k].filter(function(x){return x!==c;});
+  marcarConfig('cats'); save(); renderAll();
 }
 
 function cargarStatsAdjuntos(){
@@ -1290,6 +1354,60 @@ function archivarComprobantes(meses){
       } else { toast('Comprobantes descargados; siguen también en la app'); }
     },600);
   }).catch(function(){ toast('Error al leer los comprobantes'); });
+}
+
+/* =================================================================
+   CUADRATURA CON EL BANCO
+   Compara el saldo del sistema con el de tu cartola y ofrece dos
+   caminos: registrar la diferencia como movimiento (deja rastro) o
+   ajustar el saldo inicial (la tapa sin explicarla).
+   ================================================================= */
+function compararBanco(){
+  var cta=document.getElementById('cua_cta').value;
+  var real=parseMonto(document.getElementById('cua_real').value);
+  var out=document.getElementById('cua_out');
+  if(!isFinite(real)){ toast('Escribe el saldo que aparece en tu cartola'); return; }
+  var c=calc(state.year);
+  var sis=(cta==='disp')?c.saldoDisp:c.saldoAhorro;
+  var dif=real-sis;
+  var nombre=(cta==='disp')?'Sueldo disponible':'Ahorro';
+  if(dif===0){
+    out.innerHTML='<div class="aud-row"><span class="aud-ico">✅</span><span class="aud-txt">'
+      +'<span class="aud-t">'+nombre+' cuadrado</span>'
+      +'<span class="aud-d">El sistema y tu banco marcan lo mismo: <b>'+money(real)+'</b>.</span></span></div>';
+    return;
+  }
+  var falta=dif>0;
+  var h='<div class="aud-row warn"><span class="aud-ico">⚠️</span><span class="aud-txt">'
+    +'<span class="aud-t">Diferencia de '+money(Math.abs(dif))+'</span>'
+    +'<span class="aud-d">Banco: <b>'+money(real)+'</b> · Sistema: <b>'+money(sis)+'</b>.<br>'
+    +(falta?'El sistema muestra <b>menos</b> que el banco: falta registrar un ingreso, o hay un gasto de más (quizá repetido).'
+           :'El sistema muestra <b>más</b> que el banco: falta registrar un gasto, un cargo automático o una comisión.')
+    +'</span></span></div>';
+  h+='<div class="savings-note"><strong>Antes de tocar nada:</strong> revisa tu cartola de los últimos días y busca el movimiento que falta. '
+   + 'Registrarlo es siempre mejor que ajustar el saldo, porque deja explicado dónde se fue la plata. '
+   + 'Corre también la auditoría de abajo: detecta movimientos repetidos.</div>';
+  h+='<div class="modal-foot" style="border-radius:10px;border:1px solid var(--line);margin-top:12px">';
+  if(cta==='disp') h+='<button class="btn" id="cua_mov">Registrar la diferencia como movimiento</button>';
+  h+='<button class="btn sec" id="cua_aj">Ajustar el saldo inicial</button></div>';
+  out.innerHTML=h;
+  var bm=document.getElementById('cua_mov');
+  if(bm) bm.addEventListener('click',function(){ registrarDiferencia(dif); });
+  document.getElementById('cua_aj').addEventListener('click',function(){
+    if(cta==='disp') state.saldoInicialDisponible+=dif; else state.saldoInicialAhorrado+=dif;
+    marcarConfig(cta==='disp'?'disp':'aho');
+    save(); renderAll(); toast(nombre+' ajustado a '+money(real));
+  });
+}
+function registrarDiferencia(dif){
+  var tipo=dif>0?'Ingreso':'Gasto', cat='Ajuste de saldo';
+  var lista=dif>0?state.categorias.ingreso:state.categorias.gasto;
+  if(lista.indexOf(cat)<0){ lista.push(cat); marcarConfig('cats'); }
+  state.movimientos.push({id:uid(),fecha:todayISO(),tipo:tipo,categoria:cat,
+    descripcion:'Cuadratura con la cartola del banco',medio:state.medios[0]||'Débito',
+    monto:Math.abs(dif),adjs:[],actualizado:Date.now()});
+  marcarUsado(); save(); renderAll();
+  toast('Registrado como '+tipo.toLowerCase()+' de '+money(Math.abs(dif)));
 }
 
 /* =================================================================
@@ -1338,6 +1456,16 @@ function construirAuditoria(archivos){
   add(malaFecha.length?'err':'ok','Formato de fechas',
       malaFecha.length?malaFecha.length+' movimiento(s) con fecha inválida. Suman en el saldo pero NO aparecen en ninguna tabla anual: '+lista(malaFecha.map(fmtMov))
                       :'Las '+movs.length+' fechas usan AAAA-MM-DD y existen en el calendario.');
+
+  /* 3b. posibles duplicados: mismo día, mismo tipo, misma categoría, mismo monto */
+  var firmas={}, dobles=[];
+  movs.forEach(function(m){
+    var f=[m.fecha,m.tipo,m.categoria,m.monto].join('|');
+    if(firmas[f]){ if(firmas[f]===1) dobles.push(m); firmas[f]++; } else firmas[f]=1;
+  });
+  add(dobles.length?'warn':'ok','Movimientos repetidos',
+      dobles.length?dobles.length+' movimiento(s) se repiten exactamente (mismo día, tipo, categoría y monto). Si registraste algo dos veces, tu saldo queda descuadrado: '+lista(dobles.map(fmtMov))
+                   :'Ningún movimiento aparece duplicado.');
 
   /* 4. fechas futuras */
   var hoyISO=todayISO();
