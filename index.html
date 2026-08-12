@@ -305,6 +305,17 @@
   .syncbtn.work{opacity:.65}
   .syncbtn.off{opacity:.5}
 
+  /* ---------- lista en tarjetas (teléfono) ---------- */
+  .mcards{display:none}
+  .mcard{border:1px solid var(--line);border-radius:var(--r-sm);padding:13px 14px;margin-bottom:9px;background:var(--surface);box-shadow:var(--sh-1)}
+  .mcard-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .mcard-meta{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+  .mcard-fecha{font-size:11.5px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+  .mcard-monto{font-size:17px;font-weight:700;letter-spacing:-.022em;white-space:nowrap}
+  .mcard-desc{font-size:14.5px;color:var(--ink);margin-top:8px;line-height:1.35}
+  .mcard-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .mcard-acc{display:flex;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid var(--line-2)}
+  .mcard-acc .btn{flex:1;text-align:center}
   /* ---------- teléfono ---------- */
   @media(max-width:720px){
     header{padding:12px 16px}
@@ -324,6 +335,24 @@
     .card{padding:16px}
     table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
     th,td{padding:8px 9px;font-size:12.5px}
+    /* la lista de movimientos pasa a tarjetas */
+    .mtable{display:none}
+    .mcards{display:block}
+    /* controles cómodos para el dedo */
+    input,select,textarea{font-size:16px;padding:12px 13px}
+    .btn{padding:12px 18px;font-size:15px}
+    .btn.sm{padding:9px 12px;font-size:13px}
+    .tab{padding:10px 16px;font-size:14px}
+    .filters{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .filters .field{min-width:0}
+    .filters .field:last-child{grid-column:1/-1}
+    .ledger-foot{gap:7px}
+    .ledger-foot .btn{flex:1 1 auto}
+    .ledger-foot .hint{width:100%;margin-left:0;text-align:center;margin-top:4px}
+    .modal-box,.visor-box{border-radius:16px 16px 0 0;margin:auto 0 0}
+    .modal,.visor{padding:0;align-items:flex-end}
+    .modal-foot{position:sticky;bottom:0}
+    .modal-foot .btn{flex:1}
   }
   @media(max-width:420px){
     .sl-v{font-size:16px}
@@ -484,7 +513,7 @@ function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuent
 function esIngresoAhorro(t){ return t==='Interés del ahorro'||t==='Interes del ahorro'; }
 function esGastoAhorro(t){ return t==='Comisión del ahorro'||t==='Comision del ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="2.9", APP_FECHA="03-08-2026";
+var APP_VERSION="3.1", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -513,6 +542,7 @@ function normalize(s){
   ['disp','aho','cats','med'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
   s.avisoDuplicado=(s.avisoDuplicado==='amplio')?'amplio':'exacto';
+  s.ultimoRespaldo=+s.ultimoRespaldo||0;
   s.movimientos.forEach(function(m){
     if(m.adj && !m.adjs){ m.adjs=[{aid:m.id,nombre:m.adj.nombre,mime:m.adj.mime,kb:m.adj.kb||0}]; delete m.adj; }
     if(!m.adjs) m.adjs=[];
@@ -531,8 +561,16 @@ function save(){
    saldo a su valor anterior. Ahora cada campo lleva su propia marca y solo se
    reemplaza el campo que realmente cambió. */
 var CFG_CAMPOS=['disp','aho','cats','med'];
+/* Blindaje: si el reloj del aparato está adelantado, sus marcas ganarían
+   siempre. Se acota a un minuto por encima de la marca más alta conocida. */
+function ahoraSeguro(){
+  var t=Date.now(), max=0;
+  (state.movimientos||[]).forEach(function(m){ if(+m.actualizado>max) max=+m.actualizado; });
+  CFG_CAMPOS.forEach(function(k){ var v=+(state.cfgTs||{})[k]||0; if(v>max) max=v; });
+  return (max>t+86400000) ? max+60000 : t;
+}
 function marcarConfig(campo){
-  var t=Date.now();
+  var t=ahoraSeguro();
   if(!state.cfgTs) state.cfgTs={};
   (campo?[campo]:CFG_CAMPOS).forEach(function(k){ state.cfgTs[k]=t; });
   state.configActualizado=t;
@@ -925,9 +963,9 @@ function renderMovimientos(){
   html+=resumenFiltro(list);
   if(list.length===0){ html+='<div class="empty">No hay movimientos con estos filtros.</div>'; }
   else{
-    html+='<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th>Monto</th><th>Comp.</th><th></th></tr></thead><tbody>';
+    html+='<table class="mtable"><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th>Monto</th><th>Comp.</th><th></th></tr></thead><tbody>';
     list.forEach(function(m){
-      html+='<tr><td class="num">'+fmtFecha(m.fecha)+'</td>'
+      html+='<tr class="mrow"><td class="num">'+fmtFecha(m.fecha)+'</td>'
          +'<td>'+pill(m.tipo)+'</td>'
          +'<td>'+esc(m.categoria)+'</td>'
          +'<td class="muted">'+esc(m.descripcion)+'</td>'
@@ -939,6 +977,25 @@ function renderMovimientos(){
          +'<td><div class="row-actions"><button class="btn sec sm" data-edit="'+m.id+'">Editar</button><button class="btn danger sm" data-del="'+m.id+'">Borrar</button></div></td></tr>';
     });
     html+='</tbody></table>';
+    /* En teléfono la tabla obliga a desplazar de lado y se pierde la fecha de
+       vista. Estas tarjetas muestran lo mismo sin scroll horizontal. */
+    html+='<div class="mcards">';
+    list.forEach(function(m){
+      var adj=(m.adjs&&m.adjs.length);
+      html+='<article class="mcard">'
+        + '<div class="mcard-top">'
+        +   '<div class="mcard-meta"><span class="mcard-fecha">'+fmtFecha(m.fecha)+'</span>'+pill(m.tipo)+'</div>'
+        +   '<span class="mcard-monto num" style="color:'+colorTipo(m.tipo)+'">'+money(m.monto)+'</span>'
+        + '</div>'
+        + '<div class="mcard-desc">'+(m.descripcion?esc(m.descripcion):'<span class="muted">sin descripción</span>')+'</div>'
+        + '<div class="mcard-sub">'+esc(m.categoria||'sin categoría')+' · '+esc(m.medio||'—')+'</div>'
+        + '<div class="mcard-acc">'
+        +   '<button class="btn sec sm" data-'+(adj?'adjver':'adjadd')+'="'+m.id+'">📎'+(adj?' '+m.adjs.length:'')+'</button>'
+        +   '<button class="btn sec sm" data-edit="'+m.id+'">Editar</button>'
+        +   '<button class="btn danger sm" data-del="'+m.id+'">Borrar</button>'
+        + '</div></article>';
+    });
+    html+='</div>';
   }
   html+='</div>';
   el.innerHTML=html;
@@ -1318,7 +1375,7 @@ function renderAjustes(){
       + '</div>';
   html+='<div id="cua_out"></div></div>';
 
-  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 18 puntos del sistema: fechas, montos, tipos, categorías, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes y sincronización. Solo lee tus datos: no modifica ni borra nada.</div>';
+  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 22 puntos del sistema: fechas, montos, tipos, categorías, duplicados, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes, relojes, integridad para sincronizar y respaldos. Solo lee tus datos: no modifica ni borra nada.</div>';
   html+='<div class="filters" style="margin-bottom:4px">'
       + fld('Cuándo avisar de un repetido','<select id="aud_modo">'
         + '<option value="exacto"'+(modoAviso()==='exacto'?' selected':'')+'>Mismo día, monto y descripción (recomendado)</option>'
@@ -1770,13 +1827,48 @@ function construirAuditoria(archivos){
                     :'Sin archivos sueltos. El almacenamiento está limpio.');
   }
 
-  /* 17. espacio en localStorage */
+  /* 17. relojes: marcas de tiempo imposibles */
+  var techoTs=Date.now()+300000, futTs=[];
+  movs.forEach(function(m){ if((+m.actualizado||0)>techoTs) futTs.push(fmtMov(m)); });
+  CFG_CAMPOS.forEach(function(k){
+    if((+(state.cfgTs||{})[k]||0)>techoTs) futTs.push('configuración ('+k+')');
+  });
+  add(futTs.length?'err':'ok','Relojes de los dispositivos',
+      futTs.length?futTs.length+' marca(s) de tiempo están en el futuro. Eso significa que un dispositivo tiene la fecha mal puesta y sus versiones ganarían siempre al sincronizar, pisando cambios más nuevos: '+lista(futTs)+'. Revisa la fecha y hora automáticas en ese aparato.'
+                  :'Ninguna marca de tiempo está en el futuro. La fusión entre dispositivos resolverá los conflictos por antigüedad real.');
+
+  /* 18. integridad de los registros para sincronizar */
+  var sinId=movs.filter(function(m){ return m.id===undefined||m.id===null||String(m.id).trim()===''; });
+  var lapMalas=(state.borrados||[]).filter(function(b){ return !b||b.id===undefined||b.id===null||String(b.id).trim()===''; });
+  add((sinId.length||lapMalas.length)?'err':'ok','Registros aptos para sincronizar',
+      (sinId.length||lapMalas.length)
+        ?(sinId.length?sinId.length+' movimiento(s) sin identificador. ':'')
+         +(lapMalas.length?lapMalas.length+' registro(s) de borrado corruptos. ':'')
+         +'Estos registros no viajan bien a la planilla y pueden interrumpir la sincronización.'
+        :'Todos los movimientos y borrados tienen identificador válido; nada corrupto que interrumpa la sincronización.');
+
+  /* 19. lápidas acumuladas */
+  var lapN=(state.borrados||[]).length;
+  var lapViejas=(state.borrados||[]).filter(function(b){ return (+b.actualizado||0)<Date.now()-180*86400000; }).length;
+  add(lapN>400?'warn':'ok','Historial de borrados',
+      lapN>400?lapN+' registros de borrado acumulados ('+lapViejas+' de más de 180 días). Cada sincronización los envía y se vuelve más lenta. Se limpian solos al sincronizar en esta versión.'
+              :lapN+' registro(s) de borrado, dentro de lo normal.'+(lapViejas?' '+lapViejas+' se descartarán en la próxima sincronización.':''));
+
+  /* 20. respaldo reciente */
+  var ultimoResp=+state.ultimoRespaldo||0;
+  var diasResp=ultimoResp?Math.floor((Date.now()-ultimoResp)/86400000):null;
+  add((ultimoResp===0||diasResp>30)?'warn':'ok','Respaldo',
+      ultimoResp===0?'Nunca has exportado un respaldo desde este dispositivo. Si pierdes el navegador, pierdes lo que solo esté aquí (incluidas las fotos de comprobantes, que no se sincronizan).'
+      :diasResp>30?'Último respaldo hace '+diasResp+' días. Conviene exportar uno.'
+      :'Último respaldo hace '+diasResp+' día(s). Al día.');
+
+  /* 21. espacio en localStorage */
   var bytes=0; try{ bytes=JSON.stringify(state).length; }catch(e){}
   var kb=Math.round(bytes/1024);
   add(kb>4000?'warn':'ok','Espacio de datos',
       kb+' KB usados por los movimientos'+(kb>4000?'. Te acercas al límite del navegador (≈5 MB); exporta un respaldo.':' (el límite del navegador es ≈5 MB).'));
 
-  /* 18. sincronización */
+  /* 22. sincronización */
   var sc=syncCfg();
   var sinTs=movs.filter(function(m){ return !(+m.actualizado); }).length;
   if(!syncActivo()){
@@ -1839,6 +1931,7 @@ function imprimirAuditoria(){
 }
 
 function exportJSON(){
+  state.ultimoRespaldo=Date.now(); try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
   adjAll().catch(function(){return [];}).then(function(adjuntos){
     var pack={__formato:2,state:state,adjuntos:adjuntos};
     var blob=new Blob([JSON.stringify(pack)],{type:'application/json'});
@@ -1972,8 +2065,19 @@ function syncAplicar(resp){
   }
   state.movimientos.forEach(function(m){ localPorId[String(m.id)]=m; });
   (state.borrados||[]).forEach(function(b){ lapidas[String(b.id)]=+b.actualizado||0; });
+  /* Blindaje: las lápidas normalmente llegan dentro de resp.movimientos con
+     eliminado:true. Si el servidor las manda en un arreglo aparte, también se
+     respetan, para que un borrado no reviva al sincronizar. */
+  (resp.borrados||[]).filter(function(x){ return x && x.id!==undefined && x.id!==null && x.id!==''; }).forEach(function(b){
+    var id=String(b.id), ts=+b.actualizado||0;
+    var vic=localPorId[id];
+    if(vic && (+vic.actualizado||0)<=ts){ delete localPorId[id]; cambios++; }
+    if(lapidas[id]===undefined || lapidas[id]<ts) lapidas[id]=ts;
+  });
 
-  (resp.movimientos||[]).forEach(function(s){
+  /* Blindaje: una fila vacía o corrupta en la planilla rompía toda la
+     sincronización y el dispositivo dejaba de sincronizar sin avisar. */
+  (resp.movimientos||[]).filter(function(x){ return x && x.id!==undefined && x.id!==null && x.id!==''; }).forEach(function(s){
     var id=String(s.id), ts=+s.actualizado||0;
 
     if(s.eliminado){
@@ -2000,10 +2104,22 @@ function syncAplicar(resp){
   Object.keys(localPorId).forEach(function(k){ lista.push(localPorId[k]); });
   lista.sort(function(a,b){ return a.fecha<b.fecha?1:(a.fecha>b.fecha?-1:0); });
   state.movimientos=lista;
-  state.borrados=Object.keys(lapidas).map(function(id){ return {id:id, actualizado:lapidas[id]}; });
+  /* Las lápidas de más de 180 días ya se propagaron a todos los dispositivos:
+     se descartan para que el payload no crezca indefinidamente. */
+  var corteLap=Date.now()-180*86400000;
+  state.borrados=Object.keys(lapidas)
+    .filter(function(id){ return lapidas[id]>corteLap; })
+    .map(function(id){ return {id:id, actualizado:lapidas[id]}; });
 
   if(resp.config){
     var c=resp.config, base=+resp.configActualizado||0, rts=resp.cfgTs||{};
+    /* Blindaje del receptor: una marca de tiempo del futuro (reloj mal puesto en
+       el otro aparato) ganaría todas las fusiones para siempre. Se descarta. */
+    var techo=Date.now()+300000;   // 5 minutos de tolerancia por desfase normal
+    if(base>techo) base=0;         // marca imposible: se ignora, no se acota
+    var rts2={}; Object.keys(rts).forEach(function(k){
+      var v=+rts[k]||0; rts2[k]=(v>techo)?0:v;
+    }); rts=rts2;
     function gana(k){ return (+rts[k]||base) > (+(state.cfgTs||{})[k]||0); }
     if(!state.cfgTs) state.cfgTs={};
     if(c.saldoInicialDisponible!==undefined && gana('disp')){
