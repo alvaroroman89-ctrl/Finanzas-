@@ -43,7 +43,7 @@
   body{
     font-family:var(--body);background:var(--paper);color:var(--ink);
     line-height:1.5;-webkit-font-smoothing:antialiased;
-    text-rendering:optimizeLegibility;padding-bottom:56px;
+    text-rendering:optimizeLegibility;padding-bottom:calc(70px + env(safe-area-inset-bottom));
   }
   .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;letter-spacing:-.01em}
   h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.012em;line-height:1.25}
@@ -70,22 +70,57 @@
   .yearsel select option{color:#12211F}
 
   /* ---------- pestañas ---------- */
-  nav{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:58px;z-index:15}
-  .nwrap{max-width:1080px;margin:0 auto;display:flex;gap:4px;padding:8px 12px;overflow-x:auto;scrollbar-width:none}
-  .nwrap::-webkit-scrollbar{display:none}
-  .tab{
-    padding:8px 15px;border:1px solid transparent;background:none;border-radius:999px;
-    font:inherit;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;
-    transition:background .16s ease,color .16s ease;
+  /* barra de navegación: abajo fija en teléfono, arriba en pantalla grande */
+  nav.botnav{
+    position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);
+    border-top:1px solid var(--line);box-shadow:0 -2px 14px rgba(18,33,31,.07);
+    padding-bottom:env(safe-area-inset-bottom);
   }
-  .tab:hover{color:var(--ink);background:var(--surface-2)}
-  .tab.active{color:#fff;background:var(--deep);border-color:var(--deep)}
+  .nwrap{max-width:1080px;margin:0 auto;display:flex}
+  .tab{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:9px 4px 8px;border:none;background:none;font:inherit;cursor:pointer;
+    color:var(--faint);transition:color .16s ease;position:relative;
+  }
+  .tab .ti{font-size:19px;line-height:1}
+  .tab .tl{font-size:10.5px;font-weight:700;letter-spacing:.02em}
+  .tab.active{color:var(--deep)}
+  .tab.active::before{
+    content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
+    width:30px;height:3px;background:var(--deep);border-radius:0 0 3px 3px;
+  }
+  @media(min-width:721px){
+    nav.botnav{position:sticky;top:58px;bottom:auto;border-top:none;border-bottom:1px solid var(--line);box-shadow:none}
+    .nwrap{gap:4px;padding:8px 12px}
+    .tab{flex:0 0 auto;flex-direction:row;gap:7px;padding:8px 16px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--muted)}
+    .tab .tl{font-size:13.5px}
+    .tab .ti{font-size:15px}
+    .tab.active{color:#fff;background:var(--deep)}
+    .tab.active::before{display:none}
+  }
 
   main{max-width:1080px;margin:0 auto;padding:22px 16px}
   .view{display:none}
   .view.active{display:block;animation:rise .3s cubic-bezier(.2,.7,.3,1)}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
+  /* ---------- panel del mes en curso ---------- */
+  .mesnow{background:linear-gradient(165deg,var(--deep) 0%,var(--deep-3) 100%);color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--sh-2)}
+  .mesnow-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+  .mesnow .eyebrow{color:rgba(255,255,255,.6)}
+  .mesnow-t{display:block;font-family:var(--display);font-size:21px;font-weight:600;margin-top:3px;letter-spacing:-.015em}
+  .mesnow-dia{font-size:11px;color:rgba(255,255,255,.58);background:rgba(255,255,255,.1);padding:4px 10px;border-radius:999px;white-space:nowrap;font-weight:600}
+  .mesnow-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .mn-l{display:block;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55);font-weight:700}
+  .mn-v{display:block;font-size:18px;font-weight:700;margin-top:4px;letter-spacing:-.024em;filter:brightness(1.65)}
+  .mesnow-pie{font-size:12px;color:rgba(255,255,255,.72);margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);line-height:1.5}
+  .mesnow-pie strong{color:#fff}
+  .mesnow-vacio{font-size:13px;color:rgba(255,255,255,.7)}
+  .mesnow-acc{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .mesnow-acc .btn{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.2)}
+  .mesnow-acc .btn:hover{background:rgba(255,255,255,.22)}
+  .mesnow-sello{font-size:11.5px;color:#9FE8C4;font-weight:700;margin-top:13px}
+  @media(max-width:420px){ .mn-v{font-size:15px} .mesnow-acc .btn{flex:1} }
   /* ---------- LIBRETA: las dos bolsas (elemento distintivo) ---------- */
   .ledger{
     background:var(--surface);border:1px solid var(--line);border-radius:18px;
@@ -227,6 +262,9 @@
   .visor-top h3{margin:0;font-size:15.5px;line-height:1.45}
   .vitem{border:1px solid var(--line);border-radius:var(--r-sm);padding:11px;margin-bottom:12px;overflow:auto}
   .vhead{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:8px;flex-wrap:wrap}
+  .vpdf{width:100%;height:66vh;border:1px solid var(--line-2);border-radius:8px;display:block;background:#fff}
+  .vpdf-alt{margin-top:8px}
+  @media(max-width:720px){ .vpdf{height:52vh} }
   .vimg{width:100%;border-radius:8px;border:1px solid var(--line-2);display:block;cursor:zoom-in}
   .vimg.zoom{width:auto;max-width:none;cursor:zoom-out}
 
@@ -252,7 +290,7 @@
 
   @media print{ .visor,.toast,.modal{display:none!important} }
   .toast{
-    position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(22px);
+    position:fixed;bottom:calc(78px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%) translateY(22px);
     background:var(--deep-3);color:#fff;padding:13px 20px;border-radius:12px;font-size:13.5px;
     box-shadow:var(--sh-3);opacity:0;pointer-events:none;transition:.26s cubic-bezier(.2,.7,.3,1);
     z-index:80;max-width:90vw;text-align:center;
@@ -305,8 +343,49 @@
   .syncbtn.work{opacity:.65}
   .syncbtn.off{opacity:.5}
 
+  /* ---------- cierre mensual: actas ---------- */
+  .cierre-pend{display:flex;flex-direction:column;gap:8px}
+  .cpend{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-left:3px solid var(--back);border-radius:var(--r-sm);padding:11px 13px;background:var(--back-bg)}
+  .cpend-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .csub{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 10px;font-family:var(--body);font-weight:700}
+  .acta{border:1px solid var(--line);border-radius:var(--r-sm);padding:14px;margin-bottom:10px;background:var(--surface-2);position:relative}
+  .acta::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--in);border-radius:var(--r-sm) 0 0 var(--r-sm)}
+  .acta-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .acta-mes{display:block;font-family:var(--display);font-size:16px;font-weight:600}
+  .acta-sello{display:block;font-size:11px;color:var(--in);font-weight:700;margin-top:2px}
+  .acta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+  .acta-l{display:block;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .acta-v{display:block;font-size:15px;font-weight:700;margin-top:2px;letter-spacing:-.02em}
+  .acta-comp{margin-top:13px;border-top:1px solid var(--line);padding-top:10px}
+  .acta-comp summary{font-size:12.5px;color:var(--save);cursor:pointer;font-weight:600}
+  .acta-comp ul{margin:9px 0 0 16px;font-size:12.5px}
+  .acta-comp li{margin-bottom:4px}
+  .lnk{background:none;border:none;color:var(--save);font:inherit;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
+  @media(max-width:720px){
+    .acta-grid{grid-template-columns:1fr 1fr}
+    .cpend{flex-direction:column;align-items:stretch}
+    .cpend button{width:100%}
+  }
+  /* ---------- agrupación por mes ---------- */
+  .gmes{border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:9px;background:var(--surface);overflow:hidden}
+  .gmes-h{display:flex;align-items:center;gap:9px;padding:12px 14px;cursor:pointer;list-style:none;background:var(--surface-2);font-size:13.5px}
+  .gmes-h::-webkit-details-marker{display:none}
+  .gmes-h::before{content:"▸";color:var(--faint);font-size:11px;transition:transform .18s ease;flex:none}
+  .gmes[open] .gmes-h::before{transform:rotate(90deg)}
+  .gmes-t{font-weight:700;color:var(--ink);font-family:var(--display);font-size:15px}
+  .gmes-sello{font-size:10px;color:var(--in);font-weight:700;font-family:var(--body)}
+  .gmes-n{background:var(--line-2);color:var(--muted);border-radius:999px;padding:1px 8px;font-size:10.5px;font-weight:700}
+  .gmes-sub{margin-left:auto;display:flex;gap:9px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .gmes-b{padding:11px 11px 4px}
+  .gmes-b .mcard{background:var(--surface);margin-bottom:8px}
+  @media(max-width:420px){
+    .gmes-t{font-size:14px}
+    .gmes-sub{width:100%;margin-left:0;order:9;padding-left:20px}
+    .gmes-h{flex-wrap:wrap}
+  }
   /* ---------- lista en tarjetas (teléfono) ---------- */
-  .mcards{display:none}
+  .mcards{display:block}
+  .mtable{display:none}
   .mcard{border:1px solid var(--line);border-radius:var(--r-sm);padding:13px 14px;margin-bottom:9px;background:var(--surface);box-shadow:var(--sh-1)}
   .mcard-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
   .mcard-meta{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
@@ -335,9 +414,6 @@
     .card{padding:16px}
     table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
     th,td{padding:8px 9px;font-size:12.5px}
-    /* la lista de movimientos pasa a tarjetas */
-    .mtable{display:none}
-    .mcards{display:block}
     /* controles cómodos para el dedo */
     input,select,textarea{font-size:16px;padding:12px 13px}
     .btn{padding:12px 18px;font-size:15px}
@@ -373,12 +449,12 @@
   </div>
 </header>
 
-<nav>
+<nav class="botnav">
   <div class="nwrap">
-    <button class="tab active" data-view="resumen">Resumen</button>
-    <button class="tab" data-view="movimientos">Movimientos</button>
-    <button class="tab" data-view="cierre">Cierre mensual</button>
-    <button class="tab" data-view="ajustes">Ajustes</button>
+    <button class="tab active" data-view="resumen"><span class="ti">◎</span><span class="tl">Inicio</span></button>
+    <button class="tab" data-view="movimientos"><span class="ti">≡</span><span class="tl">Movimientos</span></button>
+    <button class="tab" data-view="cierre"><span class="ti">▦</span><span class="tl">Cierres</span></button>
+    <button class="tab" data-view="ajustes"><span class="ti">⚙</span><span class="tl">Ajustes</span></button>
   </div>
 </nav>
 
@@ -501,6 +577,7 @@ var DEFAULT = {
     {id:"seed_2", fecha:"2026-07-21", tipo:"Ingreso", categoria:"Otros ingresos", descripcion:"Depósito APV Capital", medio:"Transferencia", monto:42763},
     {id:"seed_3", fecha:"2026-07-21", tipo:"Gasto", categoria:"Compras", descripcion:"Compra de desayuno", medio:"Débito", monto:2500}
   ],
+  cierres: [],           // actas de cierre mensual firmadas
   borrados: [],          // lápidas: {id, actualizado} de movimientos eliminados
   configActualizado: 0,  // timestamp de la última edición de saldos/categorías/medios
   _esNuevo: true         // instalación recién estrenada: aún no tiene datos propios
@@ -513,7 +590,7 @@ function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuent
 function esIngresoAhorro(t){ return t==='Interés del ahorro'||t==='Interes del ahorro'; }
 function esGastoAhorro(t){ return t==='Comisión del ahorro'||t==='Comision del ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.1", APP_FECHA="03-08-2026";
+var APP_VERSION="3.3", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -536,10 +613,11 @@ function normalize(s){
   s.medios=s.medios||DEFAULT.medios.slice();
   s.movimientos=s.movimientos||[];
   s.borrados=s.borrados||[];
+  s.cierres=Array.isArray(s.cierres)?s.cierres:[];
   s.configActualizado=+s.configActualizado||0;
   var base=s.configActualizado;
   if(!s.cfgTs||typeof s.cfgTs!=='object') s.cfgTs={};
-  ['disp','aho','cats','med'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
+  ['disp','aho','cats','med','cierres'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
   s.avisoDuplicado=(s.avisoDuplicado==='amplio')?'amplio':'exacto';
   s.ultimoRespaldo=+s.ultimoRespaldo||0;
@@ -560,7 +638,7 @@ function save(){
    categoría en la tablet, la config completa de la tablet ganaba y devolvía el
    saldo a su valor anterior. Ahora cada campo lleva su propia marca y solo se
    reemplaza el campo que realmente cambió. */
-var CFG_CAMPOS=['disp','aho','cats','med'];
+var CFG_CAMPOS=['disp','aho','cats','med','cierres'];
 /* Blindaje: si el reloj del aparato está adelantado, sus marcas ganarían
    siempre. Se acota a un minuto por encima de la marca más alta conocida. */
 function ahoraSeguro(){
@@ -675,6 +753,40 @@ function catsGastoConDatos(cm){
 }
 
 /* ---------- render: RESUMEN ---------- */
+/* Panel del mes en curso: es lo primero que se ve al abrir la app.
+   Muestra solo el mes actual, no el año, para responder "¿cómo voy este mes?" */
+function tarjetaMesActual(){
+  var hoy=new Date(), a=hoy.getFullYear(), m=hoy.getMonth()+1;
+  var d=datosDelMes(a,m);
+  var acta=cierreDe(a,m);
+  var dias=new Date(a,m,0).getDate(), diaHoy=hoy.getDate();
+  var ritmo=diaHoy>0?Math.round(d.gas/diaHoy):0;
+  var proy=ritmo*dias;
+  var h='<section class="mesnow">'
+   + '<div class="mesnow-head">'
+   +   '<div><span class="eyebrow">Mes en curso</span>'
+   +     '<span class="mesnow-t">'+MESES[m-1]+' '+a+'</span></div>'
+   +   '<span class="mesnow-dia">día '+diaHoy+' de '+dias+'</span>'
+   + '</div>';
+  if(!d.n){
+    h+='<div class="mesnow-vacio">Aún no hay movimientos registrados este mes.</div>';
+  } else {
+    h+='<div class="mesnow-grid">'
+     + '<div class="mn"><span class="mn-l">Entró</span><span class="mn-v num" style="color:var(--in)">'+verSaldo(d.ing)+'</span></div>'
+     + '<div class="mn"><span class="mn-l">Salió</span><span class="mn-v num" style="color:var(--out)">'+verSaldo(d.gas)+'</span></div>'
+     + '<div class="mn"><span class="mn-l">Al ahorro</span><span class="mn-v num" style="color:var(--save)">'+verSaldo(d.aho)+'</span></div>'
+     + '</div>';
+    if(!state.ocultarSaldos && diaHoy>=5 && d.gas>0){
+      h+='<div class="mesnow-pie">Vas gastando '+money(ritmo)+' por día. A este ritmo el mes cerraría cerca de <strong>'+money(proy)+'</strong>.</div>';
+    }
+    h+='<div class="mesnow-acc">'
+     + '<button class="btn sm" data-ira="movimientos">Registrar un movimiento</button>'
+     + '<button class="btn sec sm" data-mesver="'+claveMes(a,m)+'">Ver los '+d.n+' del mes</button>'
+     + '</div>';
+  }
+  if(acta) h+='<div class="mesnow-sello">✓ Este mes ya tiene acta de cierre</div>';
+  return h+'</section>';
+}
 function renderResumen(){
   var y=state.year, c=calc(y);
   var el=document.getElementById('resumen');
@@ -685,6 +797,7 @@ function renderResumen(){
   var tasaAhorro=c.ingAno>0?c.ahoAno/c.ingAno:0;
 
   var html='';
+  html+=tarjetaMesActual();
   html+='<section class="ledger">'
       + '<div class="ledger-head"><span class="eyebrow">Patrimonio total</span>'
       +   '<span class="tot num">'+verSaldo(c.saldoDisp+c.saldoAhorro)+'</span></div>'
@@ -874,23 +987,45 @@ function abrirVisor(mid){
       html+='<div class="vitem"><div class="vhead"><span>'+(idx+1)+'. '+esc(a.nombre)+' · '+(a.kb||0)+' KB</span>'
           + '<span class="row-actions"><button class="btn sec sm" title="Imprimir o guardar como PDF" data-vpr="'+a.aid+'">🖨</button><button class="btn sec sm" title="Descargar" data-vdl="'+a.aid+'">⬇</button><button class="btn danger sm" title="Quitar" data-vdel="'+a.aid+'">✕</button></span></div>';
       if(!r){ html+='<div class="cap">Este archivo ya no está en el dispositivo (quizá fue archivado).</div>'; }
-      else if(r.mime==='application/pdf'){ html+='<div class="cap">Documento PDF · usa el botón ⬇ para abrirlo</div>'; }
+      else if(r.mime==='application/pdf'){
+        /* Los PDF ahora se ven dentro del visor. En los teléfonos que no traen
+           lector integrado queda el botón para abrirlo aparte. */
+        html+='<iframe class="vpdf" src="'+r.data+'#toolbar=0&view=FitH" title="'+esc(a.nombre)+'"></iframe>'
+            + '<div class="vpdf-alt"><button class="btn sec sm" data-vabrir="'+a.aid+'">Abrir el PDF en pantalla completa</button></div>';
+      }
       else { html+='<img class="vimg" src="'+r.data+'" alt="'+esc(a.nombre)+'">'; }
       html+='</div>';
     });
     if(!items.length) html='<div class="cap">Aún no hay comprobantes en este movimiento.</div>';
     body.innerHTML=html;
     body.querySelectorAll('[data-vdl]').forEach(function(b){b.addEventListener('click',function(){descargarAdjunto(b.getAttribute('data-vdl'));});});
+    body.querySelectorAll('[data-vabrir]').forEach(function(b){b.addEventListener('click',function(){abrirAdjuntoAparte(b.getAttribute('data-vabrir'));});});
     body.querySelectorAll('[data-vpr]').forEach(function(b){b.addEventListener('click',function(){imprimirAdjunto(mid,b.getAttribute('data-vpr'));});});
     body.querySelectorAll('.vimg').forEach(function(im){ im.addEventListener('click',function(){ im.classList.toggle('zoom'); }); });
     body.querySelectorAll('[data-vdel]').forEach(function(b){b.addEventListener('click',function(){quitarAdjunto(mid,b.getAttribute('data-vdel'));});});
+  });
+}
+/* Abre el archivo en una pestaña nueva mediante blob: los data: URL muy
+   grandes son rechazados por varios navegadores móviles. */
+function abrirAdjuntoAparte(aid){
+  adjGet(aid).then(function(rec){
+    if(!rec){ toast('Comprobante no disponible en este dispositivo'); return; }
+    try{
+      var bin=atob(String(rec.data).split(',')[1]||'');
+      var bytes=new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+      var url=URL.createObjectURL(new Blob([bytes],{type:rec.mime||'application/pdf'}));
+      var w=window.open(url,'_blank');
+      if(!w) toast('Permite las ventanas emergentes para verlo');
+      setTimeout(function(){ URL.revokeObjectURL(url); },60000);
+    }catch(e){ descargarAdjunto(aid); }
   });
 }
 function imprimirAdjunto(mid,aid){
   var m=state.movimientos.find(function(x){return x.id===mid;});
   adjGet(aid).then(function(rec){
     if(!rec){ toast('Comprobante no disponible en este dispositivo'); return; }
-    if(rec.mime==='application/pdf'){ toast('Los PDF se imprimen desde el lector; descargando…'); descargarAdjunto(aid); return; }
+    if(rec.mime==='application/pdf'){ toast('Abriendo el PDF para imprimir…'); abrirAdjuntoAparte(aid); return; }
     var enc=m?('<div class="enc"><strong>'+fmtFecha(m.fecha)+'</strong> · '+esc(m.tipo)+' · '+esc(m.categoria)+' · <strong>'+money(m.monto)+'</strong>'
              +(m.descripcion?'<br>'+esc(m.descripcion):'')+(m.medio?'<br>Medio de pago: '+esc(m.medio):'')+'</div>'):'';
     var doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Comprobante</title><style>'
@@ -979,8 +1114,34 @@ function renderMovimientos(){
     html+='</tbody></table>';
     /* En teléfono la tabla obliga a desplazar de lado y se pierde la fecha de
        vista. Estas tarjetas muestran lo mismo sin scroll horizontal. */
+    /* Agrupado por mes y plegable: el mes en curso abierto, el resto cerrado.
+       Cada cabecera muestra el subtotal de gastos e ingresos de ese mes. */
     html+='<div class="mcards">';
+    var grupos={}, orden=[];
     list.forEach(function(m){
+      var k=fechaValida(m.fecha)?m.fecha.slice(0,7):'sin-fecha';
+      if(!grupos[k]){ grupos[k]=[]; orden.push(k); }
+      grupos[k].push(m);
+    });
+    var mesHoy=todayISO().slice(0,7);
+    orden.forEach(function(k){
+      var g=grupos[k], gi=0, gg=0;
+      g.forEach(function(m){
+        var v=+m.monto||0;
+        if(m.tipo==='Ingreso'||esIngresoAhorro(m.tipo)) gi+=v;
+        else if(m.tipo==='Gasto'||esGastoAhorro(m.tipo)) gg+=v;
+      });
+      var abierto=(k===mesHoy||orden.length===1)?' open':'';
+      var titulo=(k==='sin-fecha')?'Sin fecha válida':nombreMes(k);
+      var acta=(k!=='sin-fecha')?cierreDe(+k.slice(0,4),+k.slice(5,7)):null;
+      html+='<details class="gmes"'+abierto+'><summary class="gmes-h">'
+        + '<span class="gmes-t">'+titulo+(acta?' <span class="gmes-sello">✓ cerrado</span>':'')+'</span>'
+        + '<span class="gmes-n">'+g.length+'</span>'
+        + '<span class="gmes-sub">'
+        +   (gi?'<span style="color:var(--in)">+'+money(gi)+'</span>':'')
+        +   (gg?'<span style="color:var(--out)">−'+money(gg)+'</span>':'')
+        + '</span></summary><div class="gmes-b">';
+      g.forEach(function(m){
       var adj=(m.adjs&&m.adjs.length);
       html+='<article class="mcard">'
         + '<div class="mcard-top">'
@@ -994,6 +1155,8 @@ function renderMovimientos(){
         +   '<button class="btn sec sm" data-edit="'+m.id+'">Editar</button>'
         +   '<button class="btn danger sm" data-del="'+m.id+'">Borrar</button>'
         + '</div></article>';
+      });
+      html+='</div></details>';
     });
     html+='</div>';
   }
@@ -1136,6 +1299,8 @@ function addMov(){
   };
   if(!fechaValida(nv.fecha)){ toast('Fecha no válida'); return; }
   if(!isFinite(nv.monto)||nv.monto<=0){ toast('Escribe un monto mayor a 0'); return; }
+  var cerr=mesEstaCerrado(nv.fecha);
+  if(cerr && !confirm(nombreMes(cerr.mes)+' está cerrado.\n\nSi agregas este movimiento, el acta ya no coincidirá con los movimientos reales. Conviene reabrir el mes, agregarlo y volver a cerrarlo.\n\n¿Agregar de todos modos?')) return;
   var iguales=buscarParecido(nv);
   if(iguales.length) avisarDuplicado(nv,iguales,function(){ guardarMov(nv); });
   else guardarMov(nv);
@@ -1190,6 +1355,11 @@ function initDuplicado(){
   ov.addEventListener('click',function(e){ if(e.target===ov) cerrarDuplicado(); });
 }
 function delMov(id){
+  var _v=state.movimientos.find(function(m){return m.id===id;});
+  if(_v){
+    var _c=mesEstaCerrado(_v.fecha);
+    if(_c && !confirm(nombreMes(_c.mes)+' está cerrado.\n\nSi borras este movimiento, el acta ya no coincidirá con los movimientos reales.\n\n¿Borrar igual?')) return;
+  }
   if(!confirm('¿Borrar este movimiento?')) return;
   var _victim=state.movimientos.find(function(m){return m.id===id;});
   try{ ((_victim&&_victim.adjs)||[]).forEach(function(a){ adjDel(a.aid); }); }catch(e){}
@@ -1236,6 +1406,9 @@ function guardarEditor(){
     medio:document.getElementById('ed_medio').value,
     descripcion:limpiarTexto(document.getElementById('ed_desc').value),monto:monto};
   /* Editar también puede crear un duplicado: se avisa igual que al agregar. */
+  var cerrA=mesEstaCerrado(m.fecha), cerrB=mesEstaCerrado(nv.fecha);
+  var cerr=cerrA||cerrB;
+  if(cerr && !confirm(nombreMes(cerr.mes)+' está cerrado.\n\nSi lo modificas, el acta ya no coincidirá con los movimientos reales.\n\n¿Continuar igual?')) return;
   var iguales=buscarParecido(nv,m.id);
   function aplicar(){
     m.fecha=nv.fecha; m.tipo=nv.tipo; m.categoria=nv.categoria;
@@ -1265,6 +1438,22 @@ function initEditor(){
 }
 
 /* ---------- render: CIERRE ---------- */
+function initCierreBotones(el){
+  el.querySelectorAll('[data-cerrar]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var p=b.getAttribute('data-cerrar').split('-'); cerrarMes(+p[0],+p[1]);
+    });
+  });
+  el.querySelectorAll('[data-reabrir]').forEach(function(b){
+    b.addEventListener('click',function(){ reabrirMes(b.getAttribute('data-reabrir')); });
+  });
+  el.querySelectorAll('[data-actapr]').forEach(function(b){
+    b.addEventListener('click',function(){ imprimirActa(b.getAttribute('data-actapr')); });
+  });
+  el.querySelectorAll('[data-actaver]').forEach(function(b){
+    b.addEventListener('click',function(){ abrirVisor(b.getAttribute('data-actaver')); });
+  });
+}
 function renderCierre(){
   var el=document.getElementById('cierre');
   var y=state.year, c=calc(y);
@@ -1294,6 +1483,7 @@ function renderCierre(){
   html+='</div>';
 
   // bloque cierre resumen
+    html+=tarjetaCierres(y);
   html+='<div class="card"><h2>Resultado por mes</h2><div class="cap">Ingresos, gastos, ahorro y resultado de cada mes.</div>';
   html+='<div class="matrix-wrap"><table class="matrix"><thead><tr><th>Concepto</th>';
   MESES3.forEach(function(m){html+='<th>'+m+'</th>';});
@@ -1309,6 +1499,7 @@ function renderCierre(){
   html+='</tbody></table></div></div>';
 
   el.innerHTML=html;
+  initCierreBotones(el);
 }
 function cierreRow(label,arr,tot){
   var h='<tr class="cierre"><td>'+label+'</td>';
@@ -1375,7 +1566,7 @@ function renderAjustes(){
       + '</div>';
   html+='<div id="cua_out"></div></div>';
 
-  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 22 puntos del sistema: fechas, montos, tipos, categorías, duplicados, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes, relojes, integridad para sincronizar y respaldos. Solo lee tus datos: no modifica ni borra nada.</div>';
+  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 23 puntos del sistema: fechas, montos, tipos, categorías, duplicados, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes, relojes, integridad para sincronizar y respaldos. Solo lee tus datos: no modifica ni borra nada.</div>';
   html+='<div class="filters" style="margin-bottom:4px">'
       + fld('Cuándo avisar de un repetido','<select id="aud_modo">'
         + '<option value="exacto"'+(modoAviso()==='exacto'?' selected':'')+'>Mismo día, monto y descripción (recomendado)</option>'
@@ -1562,6 +1753,134 @@ function archivarComprobantes(meses){
     },600);
   }).catch(function(){ toast('Error al leer los comprobantes'); });
 }
+
+/* =================================================================
+   CIERRE MENSUAL
+   Sella un mes: guarda un acta con los totales, los saldos de cierre y
+   el inventario de comprobantes. Los movimientos NO se tocan ni se
+   borran: el acta es un registro histórico que queda junto a ellos.
+   ================================================================= */
+function claveMes(a,m){ return a+'-'+('0'+m).slice(-2); }
+function cierreDe(a,m){ var k=claveMes(a,m); return (state.cierres||[]).find(function(c){return c.mes===k;})||null; }
+function mesEstaCerrado(fecha){
+  if(!fechaValida(fecha)) return null;
+  return cierreDe(+fecha.slice(0,4), +fecha.slice(5,7));
+}
+/* Todo lo que define el mes: totales, saldos al cierre e inventario de
+   comprobantes. Se calcula en el momento de cerrar y queda congelado. */
+function datosDelMes(a,m){
+  var movs=state.movimientos.filter(function(x){
+    return fechaValida(x.fecha) && yearOf(x)===a && monthOf(x)===m;
+  });
+  var ing=0,gas=0,dep=0,ret=0,iA=0,gA=0, comps=[];
+  movs.forEach(function(x){
+    var v=+x.monto||0;
+    if(x.tipo==='Ingreso') ing+=v; else if(x.tipo==='Gasto') gas+=v;
+    else if(esDeposito(x.tipo)) dep+=v; else if(esRetiro(x.tipo)) ret+=v;
+    else if(esIngresoAhorro(x.tipo)) iA+=v; else if(esGastoAhorro(x.tipo)) gA+=v;
+    (x.adjs||[]).forEach(function(ad){
+      comps.push({aid:ad.aid,nombre:ad.nombre,kb:ad.kb||0,movId:x.id,
+        fecha:x.fecha,monto:v,concepto:x.descripcion||x.categoria||''});
+    });
+  });
+  /* Saldos al último día del mes: todo lo ocurrido hasta esa fecha. */
+  var fin=claveMes(a,m)+'-31';
+  function hasta(fn){
+    var t=0;
+    state.movimientos.forEach(function(x){
+      if(fechaValida(x.fecha) && x.fecha<=fin && fn(x)) t+=(+x.monto||0);
+    });
+    return t;
+  }
+  var sAho=state.saldoInicialAhorrado+hasta(function(x){return esDeposito(x.tipo);})
+          -hasta(function(x){return esRetiro(x.tipo);})
+          +hasta(function(x){return esIngresoAhorro(x.tipo);})
+          -hasta(function(x){return esGastoAhorro(x.tipo);});
+  var sDisp=state.saldoInicialDisponible+hasta(function(x){return x.tipo==='Ingreso';})
+           -hasta(function(x){return x.tipo==='Gasto';})
+           -hasta(function(x){return esDeposito(x.tipo);})
+           +hasta(function(x){return esRetiro(x.tipo);});
+  return {n:movs.length, ing:ing+iA, gas:gas+gA, aho:dep-ret+iA-gA,
+          resultado:(ing+iA)-(gas+gA)-(dep-ret+iA-gA),
+          saldoDisp:sDisp, saldoAhorro:sAho, comprobantes:comps};
+}
+function cerrarMes(a,m){
+  if(cierreDe(a,m)){ toast('Ese mes ya está cerrado'); return; }
+  var hoy=todayISO();
+  if(claveMes(a,m) >= hoy.slice(0,7)){ toast('Solo puedes cerrar meses ya terminados'); return; }
+  var d=datosDelMes(a,m);
+  if(!d.n && !confirm(MESES[m-1]+' '+a+' no tiene movimientos. ¿Cerrarlo igual?')) return;
+  var acta={
+    mes:claveMes(a,m), cerradoEl:Date.now(), version:APP_VERSION,
+    movimientos:d.n, ingresos:d.ing, gastos:d.gas, ahorro:d.aho, resultado:d.resultado,
+    saldoDisp:d.saldoDisp, saldoAhorro:d.saldoAhorro, comprobantes:d.comprobantes
+  };
+  state.cierres.push(acta);
+  state.cierres.sort(function(x,y){ return x.mes<y.mes?1:-1; });
+  marcarConfig('cierres'); marcarUsado(); save(); renderAll();
+  toast(MESES[m-1]+' '+a+' cerrado · '+d.n+' movimiento'+(d.n===1?'':'s')+' y '+d.comprobantes.length+' comprobante'+(d.comprobantes.length===1?'':'s')+' registrados');
+}
+function reabrirMes(mes){
+  var c=(state.cierres||[]).find(function(x){return x.mes===mes;});
+  if(!c) return;
+  if(!confirm('Reabrir '+nombreMes(mes)+'?\n\nEl acta se elimina y el mes vuelve a quedar editable. Los movimientos y comprobantes no se tocan.')) return;
+  state.cierres=state.cierres.filter(function(x){return x.mes!==mes;});
+  marcarConfig('cierres'); marcarUsado(); save(); renderAll();
+  toast(nombreMes(mes)+' reabierto');
+}
+function tarjetaCierres(y){
+  var h='<div class="card"><h2>Cierre de meses</h2>'
+   + '<div class="cap">Al cerrar un mes queda un acta con sus totales, los saldos de ese momento y el inventario de comprobantes. '
+   + 'Los movimientos no se borran ni se modifican: el acta se guarda junto a ellos como registro histórico.</div>';
+  var hoy=todayISO(), pendientes=[];
+  for(var m=1;m<=12;m++){
+    var k=claveMes(y,m);
+    if(k>=hoy.slice(0,7)) continue;
+    if(cierreDe(y,m)) continue;
+    var d=datosDelMes(y,m);
+    if(d.n) pendientes.push({m:m,d:d});
+  }
+  if(pendientes.length){
+    h+='<div class="cierre-pend">';
+    pendientes.forEach(function(p){
+      h+='<div class="cpend"><div><strong>'+MESES[p.m-1]+' '+y+'</strong>'
+       + '<div class="cpend-sub">'+p.d.n+' movimiento'+(p.d.n===1?'':'s')+' · '+p.d.comprobantes.length+' comprobante'+(p.d.comprobantes.length===1?'':'s')+'</div></div>'
+       + '<button class="btn sm" data-cerrar="'+y+'-'+p.m+'">Cerrar mes</button></div>';
+    });
+    h+='</div>';
+  } else h+='<div class="cap" style="margin:0">No hay meses terminados pendientes de cierre en '+y+'.</div>';
+
+  var actas=(state.cierres||[]).filter(function(c){ return c.mes.slice(0,4)==String(y); });
+  if(actas.length){
+    h+='<h3 class="csub">Actas de '+y+'</h3>';
+    actas.forEach(function(c){
+      h+='<article class="acta">'
+       + '<div class="acta-top"><div><span class="acta-mes">'+nombreMes(c.mes)+'</span>'
+       +   '<span class="acta-sello">✓ Cerrado el '+fmtFecha(isoLocal(new Date(c.cerradoEl)))+'</span></div>'
+       +   '<div class="row-actions"><button class="btn sec sm" data-actapr="'+c.mes+'">🖨</button>'
+       +   '<button class="btn sec sm" data-reabrir="'+c.mes+'">Reabrir</button></div></div>'
+       + '<div class="acta-grid">'
+       +   '<div><span class="acta-l">Movimientos</span><span class="acta-v num">'+c.movimientos+'</span></div>'
+       +   '<div><span class="acta-l">Ingresos</span><span class="acta-v num" style="color:var(--in)">'+money(c.ingresos)+'</span></div>'
+       +   '<div><span class="acta-l">Gastos</span><span class="acta-v num" style="color:var(--out)">'+money(c.gastos)+'</span></div>'
+       +   '<div><span class="acta-l">Ahorro neto</span><span class="acta-v num" style="color:var(--save)">'+money(c.ahorro)+'</span></div>'
+       +   '<div><span class="acta-l">Saldo disponible</span><span class="acta-v num">'+money(c.saldoDisp)+'</span></div>'
+       +   '<div><span class="acta-l">Saldo ahorro</span><span class="acta-v num">'+money(c.saldoAhorro)+'</span></div>'
+       + '</div>';
+      if((c.comprobantes||[]).length){
+        h+='<details class="acta-comp"><summary>'+c.comprobantes.length+' comprobante'+(c.comprobantes.length===1?'':'s')+' en el historial</summary><ul>';
+        c.comprobantes.forEach(function(cp){
+          h+='<li><button class="lnk" data-actaver="'+cp.movId+'">'+esc(cp.nombre)+'</button>'
+           + '<span class="muted"> · '+fmtFecha(cp.fecha)+' · '+money(cp.monto)+(cp.concepto?' · '+esc(cp.concepto):'')+'</span></li>';
+        });
+        h+='</ul></details>';
+      }
+      h+='</article>';
+    });
+  }
+  return h+'</div>';
+}
+function nombreMes(k){ return MESES[(+k.slice(5,7))-1]+' '+k.slice(0,4); }
 
 /* =================================================================
    CUADRATURA CON EL BANCO
@@ -1862,13 +2181,27 @@ function construirAuditoria(archivos){
       :diasResp>30?'Último respaldo hace '+diasResp+' días. Conviene exportar uno.'
       :'Último respaldo hace '+diasResp+' día(s). Al día.');
 
-  /* 21. espacio en localStorage */
+  /* 21. actas de cierre vs movimientos reales */
+  var desfase=[];
+  (state.cierres||[]).forEach(function(c){
+    var a=+c.mes.slice(0,4), mm=+c.mes.slice(5,7);
+    var d=datosDelMes(a,mm);
+    if(d.n!==c.movimientos || d.ing!==c.ingresos || d.gas!==c.gastos){
+      desfase.push(nombreMes(c.mes)+' (acta: '+c.movimientos+' mov / '+money(c.gastos)+' gastos · hoy: '+d.n+' mov / '+money(d.gas)+' gastos)');
+    }
+  });
+  add(desfase.length?'warn':'ok','Actas de cierre',
+      (state.cierres||[]).length===0?'Aún no has cerrado ningún mes. Cerrar los meses terminados deja un acta con sus totales y su inventario de comprobantes.'
+      :desfase.length?desfase.length+' acta(s) ya no coinciden con los movimientos: '+lista(desfase,2)+'. Alguien editó el mes después de cerrarlo. Reabre el mes y ciérralo de nuevo para regenerar el acta.'
+      :(state.cierres||[]).length+' acta(s) de cierre y todas coinciden con los movimientos actuales.');
+
+  /* 22. espacio en localStorage */
   var bytes=0; try{ bytes=JSON.stringify(state).length; }catch(e){}
   var kb=Math.round(bytes/1024);
   add(kb>4000?'warn':'ok','Espacio de datos',
       kb+' KB usados por los movimientos'+(kb>4000?'. Te acercas al límite del navegador (≈5 MB); exporta un respaldo.':' (el límite del navegador es ≈5 MB).'));
 
-  /* 22. sincronización */
+  /* 23. sincronización */
   var sc=syncCfg();
   var sinTs=movs.filter(function(m){ return !(+m.actualizado); }).length;
   if(!syncActivo()){
@@ -1910,6 +2243,45 @@ function pintarAuditoria(){
   if(p) p.addEventListener('click',function(e){ e.preventDefault(); imprimirAuditoria(); });
 }
 
+function imprimirActa(mes){
+  var c=(state.cierres||[]).find(function(x){return x.mes===mes;});
+  if(!c) return;
+  function fila(l,v,col){ return '<tr><td>'+l+'</td><td class="n"'+(col?' style="color:'+col+'"':'')+'>'+money(v)+'</td></tr>'; }
+  var d='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Acta '+nombreMes(mes)+'</title><style>'
+   +'@page{margin:16mm}body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12.5px}'
+   +'h1{font-size:18px;margin:0 0 3px}.s{color:#555;margin-bottom:16px;font-size:12px}'
+   +'table{width:100%;border-collapse:collapse;margin-bottom:16px}'
+   +'td{padding:6px 8px;border-bottom:1px solid #ddd}td.n{text-align:right;font-weight:700}'
+   +'tr.tot td{border-top:2px solid #333;border-bottom:none;font-weight:700}'
+   +'h2{font-size:13.5px;margin:14px 0 6px}ul{margin:0 0 0 18px;padding:0}li{margin-bottom:3px}'
+   +'.pie{margin-top:24px;border-top:1px solid #999;padding-top:8px;color:#666;font-size:11px}'
+   +'</style></head><body>'
+   +'<h1>Acta de cierre · '+nombreMes(mes)+'</h1>'
+   +'<div class="s">Cerrado el '+new Date(c.cerradoEl).toLocaleString('es-CL')+' · '+c.movimientos+' movimiento'+(c.movimientos===1?'':'s')+' registrados</div>'
+   +'<table>'
+   + fila('Ingresos del mes',c.ingresos,'#0B7A4F')
+   + fila('Gastos del mes',c.gastos,'#B23A1E')
+   + fila('Ahorro neto del mes',c.ahorro,'#2B5FA8')
+   +'<tr class="tot"><td>Resultado (Ing − Gas − Aho)</td><td class="n">'+money(c.resultado)+'</td></tr>'
+   +'</table>'
+   +'<h2>Saldos al cierre del mes</h2><table>'
+   + fila('Sueldo disponible',c.saldoDisp)
+   + fila('Ahorro',c.saldoAhorro)
+   +'<tr class="tot"><td>Patrimonio total</td><td class="n">'+money(c.saldoDisp+c.saldoAhorro)+'</td></tr>'
+   +'</table>';
+  if((c.comprobantes||[]).length){
+    d+='<h2>Comprobantes del mes ('+c.comprobantes.length+')</h2><ul>';
+    c.comprobantes.forEach(function(cp){
+      d+='<li>'+fmtFecha(cp.fecha)+' · '+money(cp.monto)+(cp.concepto?' · '+esc(cp.concepto):'')+' · '+esc(cp.nombre)+'</li>';
+    });
+    d+='</ul>';
+  } else d+='<h2>Comprobantes del mes</h2><p>Sin comprobantes adjuntos.</p>';
+  d+='<div class="pie">Finanzas Personales · versión '+c.version+' · documento generado el '+new Date().toLocaleString('es-CL')+'</div>';
+  d+='</body></html>';
+  var w=window.open('','_blank');
+  if(w){ w.document.write(d); w.document.close(); w.focus(); setTimeout(function(){w.print();},400); }
+  else toast('Permite las ventanas emergentes para imprimir');
+}
 function imprimirAuditoria(){
   if(!_ultimaAuditoria) return;
   var a=_ultimaAuditoria;
@@ -2037,6 +2409,7 @@ function syncPayload(){
     config: {
       saldoInicialAhorrado: state.saldoInicialAhorrado,
       saldoInicialDisponible: state.saldoInicialDisponible,
+      cierres: state.cierres||[],
       categorias: state.categorias,
       medios: state.medios
     },
@@ -2130,6 +2503,17 @@ function syncAplicar(resp){
     }
     if(c.categorias && gana('cats')){ state.categorias=c.categorias; state.cfgTs.cats=+rts.cats||base; cambios++; }
     if(c.medios && gana('med')){ state.medios=c.medios; state.cfgTs.med=+rts.med||base; cambios++; }
+    /* Las actas se unen en vez de reemplazarse: un cierre hecho en la tablet y
+       otro en el teléfono deben convivir, nunca perderse. */
+    if(Array.isArray(c.cierres)){
+      var hay={}; (state.cierres||[]).forEach(function(x){ hay[x.mes]=1; });
+      var nuevas=c.cierres.filter(function(x){ return x && x.mes && !hay[x.mes]; });
+      if(nuevas.length){
+        state.cierres=(state.cierres||[]).concat(nuevas).sort(function(x,y){return x.mes<y.mes?1:-1;});
+        cambios++;
+      }
+      state.cfgTs.cierres=Math.max(+(state.cfgTs||{}).cierres||0,+rts.cierres||base);
+    }
     state.configActualizado=Math.max(+state.configActualizado||0,base);
   }
   return cambios;
@@ -2245,16 +2629,17 @@ function initVisor(){
   var a=document.getElementById('visor_add'); if(a) a.addEventListener('click',function(){ if(_visorMid) pedirAdjunto(_visorMid); });
   var ov=document.getElementById('visor'); if(ov) ov.addEventListener('click',function(e){ if(e.target===ov) cerrarVisor(); });
 }
+/* Cambia de vista desde cualquier botón, no solo desde la barra. */
+function irAVista(v){
+  document.querySelectorAll('.tab').forEach(function(x){ x.classList.toggle('active', x.getAttribute('data-view')===v); });
+  document.querySelectorAll('.view').forEach(function(x){ x.classList.toggle('active', x.id===v); });
+  window.scrollTo(0,0);
+}
 function renderAll(){ renderResumen(); renderMovimientos(); renderCierre(); renderAjustes(); }
 
 document.getElementById('yearSel').addEventListener('change',function(){ state.year=+this.value; save(); renderAll(); });
 document.querySelectorAll('.tab').forEach(function(t){
-  t.addEventListener('click',function(){
-    document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
-    document.querySelectorAll('.view').forEach(function(x){x.classList.remove('active');});
-    t.classList.add('active');
-    document.getElementById(t.getAttribute('data-view')).classList.add('active');
-  });
+  t.addEventListener('click',function(){ irAVista(t.getAttribute('data-view')); });
 });
 
 document.getElementById('syncBtn').addEventListener('click',function(){ syncAhora(false); });
