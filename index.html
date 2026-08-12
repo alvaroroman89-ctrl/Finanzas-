@@ -43,7 +43,7 @@
   body{
     font-family:var(--body);background:var(--paper);color:var(--ink);
     line-height:1.5;-webkit-font-smoothing:antialiased;
-    text-rendering:optimizeLegibility;padding-bottom:calc(70px + env(safe-area-inset-bottom));
+    text-rendering:optimizeLegibility;padding-bottom:76px;
   }
   .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;letter-spacing:-.01em}
   h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.012em;line-height:1.25}
@@ -74,7 +74,10 @@
   nav.botnav{
     position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);
     border-top:1px solid var(--line);box-shadow:0 -2px 14px rgba(18,33,31,.07);
-    padding-bottom:env(safe-area-inset-bottom);
+  }
+  @supports(padding:env(safe-area-inset-bottom)){
+    nav.botnav{padding-bottom:env(safe-area-inset-bottom)}
+    body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
   }
   .nwrap{max-width:1080px;margin:0 auto;display:flex}
   .tab{
@@ -101,7 +104,7 @@
 
   main{max-width:1080px;margin:0 auto;padding:22px 16px}
   .view{display:none}
-  .view.active{display:block;animation:rise .3s cubic-bezier(.2,.7,.3,1)}
+  .view.active{display:block}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
   /* ---------- panel del mes en curso ---------- */
@@ -290,7 +293,7 @@
 
   @media print{ .visor,.toast,.modal{display:none!important} }
   .toast{
-    position:fixed;bottom:calc(78px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%) translateY(22px);
+    position:fixed;bottom:86px;left:50%;transform:translateX(-50%) translateY(22px);
     background:var(--deep-3);color:#fff;padding:13px 20px;border-radius:12px;font-size:13.5px;
     box-shadow:var(--sh-3);opacity:0;pointer-events:none;transition:.26s cubic-bezier(.2,.7,.3,1);
     z-index:80;max-width:90vw;text-align:center;
@@ -302,6 +305,7 @@
     font-size:12px;color:var(--muted);background:var(--save-bg);border:1px solid #D3E0F1;
     border-left:3px solid var(--save);border-radius:var(--r-sm);padding:11px 13px;margin-top:13px;
   }
+  .errbox{background:var(--out-bg);border:1px solid #EFC5B8;border-radius:8px;padding:11px 13px;font-size:12px;color:var(--out);white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace;margin-top:10px}
   .verfoot{text-align:center;font-size:11.5px;color:var(--faint);padding:18px 0 4px;letter-spacing:.02em}
   .verfoot strong{color:var(--muted)}
 
@@ -590,7 +594,7 @@ function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuent
 function esIngresoAhorro(t){ return t==='Interés del ahorro'||t==='Interes del ahorro'; }
 function esGastoAhorro(t){ return t==='Comisión del ahorro'||t==='Comision del ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.3", APP_FECHA="03-08-2026";
+var APP_VERSION="3.4", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -2635,7 +2639,23 @@ function irAVista(v){
   document.querySelectorAll('.view').forEach(function(x){ x.classList.toggle('active', x.id===v); });
   window.scrollTo(0,0);
 }
-function renderAll(){ renderResumen(); renderMovimientos(); renderCierre(); renderAjustes(); }
+/* Red de seguridad: si un panel falla, los demás se dibujan igual y el problema
+   se muestra en pantalla en vez de dejarla en blanco. */
+function renderAll(){
+  [['resumen',renderResumen],['movimientos',renderMovimientos],
+   ['cierre',renderCierre],['ajustes',renderAjustes]].forEach(function(p){
+    try{ p[1](); }
+    catch(e){
+      var el=document.getElementById(p[0]);
+      if(el) el.innerHTML='<div class="card"><h2>No se pudo dibujar este panel</h2>'
+        + '<div class="cap">Tus datos están guardados y no se han perdido. '
+        + 'Muéstrale este mensaje a quien te ayuda con la app:</div>'
+        + '<pre class="errbox">'+esc(String(e&&e.message||e))+'</pre>'
+        + '<div class="cap" style="margin:12px 0 0">Puedes exportar un respaldo desde Ajustes para tener tu información a salvo.</div></div>';
+      if(window.console&&console.error) console.error('Fallo en '+p[0],e);
+    }
+  });
+}
 
 document.getElementById('yearSel').addEventListener('change',function(){ state.year=+this.value; save(); renderAll(); });
 document.querySelectorAll('.tab').forEach(function(t){
