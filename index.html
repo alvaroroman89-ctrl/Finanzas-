@@ -43,7 +43,7 @@
   body{
     font-family:var(--body);background:var(--paper);color:var(--ink);
     line-height:1.5;-webkit-font-smoothing:antialiased;
-    text-rendering:optimizeLegibility;padding-bottom:76px;
+    text-rendering:optimizeLegibility;padding-bottom:40px;
   }
   .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;letter-spacing:-.01em}
   h1,h2,h3{font-family:var(--display);font-weight:600;letter-spacing:-.012em;line-height:1.25}
@@ -70,38 +70,24 @@
   .yearsel select option{color:#12211F}
 
   /* ---------- pestañas ---------- */
-  /* barra de navegación: abajo fija en teléfono, arriba en pantalla grande */
-  nav.botnav{
-    position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--surface);
-    border-top:1px solid var(--line);box-shadow:0 -2px 14px rgba(18,33,31,.07);
-  }
-  @supports(padding:env(safe-area-inset-bottom)){
-    nav.botnav{padding-bottom:env(safe-area-inset-bottom)}
-    body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
-  }
-  .nwrap{max-width:1080px;margin:0 auto;display:flex}
+  /* Barra de navegación: arriba, en flujo normal. Sin position:fixed, que en
+     algunos navegadores móviles expandía la barra sobre toda la pantalla. */
+  nav{background:var(--surface);border-bottom:1px solid var(--line);position:relative;z-index:15}
+  .nwrap{max-width:1080px;margin:0 auto;display:flex;gap:6px;padding:8px 10px;overflow-x:auto;scrollbar-width:none}
+  .nwrap::-webkit-scrollbar{display:none}
   .tab{
-    flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
-    padding:9px 4px 8px;border:none;background:none;font:inherit;cursor:pointer;
-    color:var(--faint);transition:color .16s ease;position:relative;
+    flex:1 1 0;min-width:0;display:block;padding:8px 6px;border:1px solid transparent;
+    background:none;border-radius:12px;font:inherit;color:var(--muted);cursor:pointer;
+    text-align:center;line-height:1.25;
   }
-  .tab .ti{font-size:19px;line-height:1}
-  .tab .tl{font-size:10.5px;font-weight:700;letter-spacing:.02em}
-  .tab.active{color:var(--deep)}
-  .tab.active::before{
-    content:"";position:absolute;top:0;left:50%;transform:translateX(-50%);
-    width:30px;height:3px;background:var(--deep);border-radius:0 0 3px 3px;
-  }
+  .tab .ti{display:block;font-size:17px}
+  .tab .tl{display:block;font-size:10.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tab.active{color:#fff;background:var(--deep);border-color:var(--deep)}
   @media(min-width:721px){
-    nav.botnav{position:sticky;top:58px;bottom:auto;border-top:none;border-bottom:1px solid var(--line);box-shadow:none}
-    .nwrap{gap:4px;padding:8px 12px}
-    .tab{flex:0 0 auto;flex-direction:row;gap:7px;padding:8px 16px;border-radius:999px;font-size:13.5px;font-weight:600;color:var(--muted)}
-    .tab .tl{font-size:13.5px}
-    .tab .ti{font-size:15px}
-    .tab.active{color:#fff;background:var(--deep)}
-    .tab.active::before{display:none}
+    .tab{flex:0 0 auto;padding:8px 18px;border-radius:999px}
+    .tab .ti{display:inline;font-size:14px;margin-right:6px}
+    .tab .tl{display:inline;font-size:13.5px}
   }
-
   main{max-width:1080px;margin:0 auto;padding:22px 16px}
   .view{display:none}
   .view.active{display:block}
@@ -293,7 +279,7 @@
 
   @media print{ .visor,.toast,.modal{display:none!important} }
   .toast{
-    position:fixed;bottom:86px;left:50%;transform:translateX(-50%) translateY(22px);
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(22px);
     background:var(--deep-3);color:#fff;padding:13px 20px;border-radius:12px;font-size:13.5px;
     box-shadow:var(--sh-3);opacity:0;pointer-events:none;transition:.26s cubic-bezier(.2,.7,.3,1);
     z-index:80;max-width:90vw;text-align:center;
@@ -453,7 +439,7 @@
   </div>
 </header>
 
-<nav class="botnav">
+<nav>
   <div class="nwrap">
     <button class="tab active" data-view="resumen"><span class="ti">◎</span><span class="tl">Inicio</span></button>
     <button class="tab" data-view="movimientos"><span class="ti">≡</span><span class="tl">Movimientos</span></button>
@@ -594,7 +580,7 @@ function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuent
 function esIngresoAhorro(t){ return t==='Interés del ahorro'||t==='Interes del ahorro'; }
 function esGastoAhorro(t){ return t==='Comisión del ahorro'||t==='Comision del ahorro'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.4", APP_FECHA="03-08-2026";
+var APP_VERSION="3.5", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -2670,6 +2656,22 @@ initDuplicado();
 buildYearSel();
 renderAll();
 syncPintaEstado();
+/* Salvaguarda final: si la vista activa quedó sin alto visible (por un estilo
+   que el navegador no interpretó), se fuerza a mostrarse. Evita que la pantalla
+   quede en blanco con los datos ya cargados. */
+setTimeout(function(){
+  try{
+    var v=document.querySelector('.view.active');
+    if(v && v.innerHTML.length>200 && v.offsetHeight<40){
+      v.style.display='block'; v.style.opacity='1'; v.style.visibility='visible';
+      document.querySelectorAll('nav').forEach(function(n){
+        n.style.position='relative'; n.style.height='auto'; n.style.maxHeight='none';
+      });
+      document.body.style.paddingBottom='40px';
+    }
+  }catch(e){}
+},300);
+
 if(syncActivo() && syncCfg().auto) syncAhora(true);
 </script>
 </body>
