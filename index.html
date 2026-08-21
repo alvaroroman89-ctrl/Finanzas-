@@ -93,6 +93,27 @@
   .view.active{display:block}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
+  /* ---------- franja de control de saldos ---------- */
+  .ctlban{display:flex;align-items:center;gap:12px;border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px;border:1px solid var(--line)}
+  .ctlban.ok{background:var(--in-bg);border-color:#BFE3CE}
+  .ctlban.alerta{background:var(--back-bg);border-color:#E8D3A4}
+  .ctlban.nuevo{background:var(--save-bg);border-color:#D3E0F1}
+  .ctlban-txt{flex:1;min-width:0}
+  .ctlban-txt strong{display:block;font-size:13.5px}
+  .ctlban.ok strong{color:var(--in)} .ctlban.alerta strong{color:var(--back)} .ctlban.nuevo strong{color:var(--save)}
+  .ctlban-txt span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+  .ctlban button{flex:none}
+  @media(max-width:480px){ .ctlban{flex-direction:column;align-items:stretch} .ctlban button{width:100%} }
+  .ctl-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 13px;margin-bottom:10px}
+  .ctl-item.ok{background:var(--in-bg);border-color:#BFE3CE}
+  .ctl-item.mal{background:var(--out-bg);border-color:#EFC5B8}
+  .ctl-n{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .ctl-dif{display:block;font-size:25px;font-weight:700;color:var(--out);letter-spacing:-.028em;margin:3px 0 5px}
+  .ctl-d{display:block;font-size:12.5px;color:var(--muted);line-height:1.5}
+  .ctl-item.ok .ctl-d{color:var(--in);font-size:14px;margin-top:4px}
+  .ctl-d b{color:var(--ink)}
+  .ctl-acc{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}
+  .ctl-acc .btn{flex:1}
   /* ---------- panel del mes en curso ---------- */
   .mesnow{background:linear-gradient(165deg,var(--deep) 0%,var(--deep-3) 100%);color:#fff;border-radius:18px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--sh-2)}
   .mesnow-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
@@ -292,6 +313,11 @@
     border-left:3px solid var(--save);border-radius:var(--r-sm);padding:11px 13px;margin-top:13px;
   }
   .errbox{background:var(--out-bg);border:1px solid #EFC5B8;border-radius:8px;padding:11px 13px;font-size:12px;color:var(--out);white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace;margin-top:10px}
+  .medlist{display:flex;flex-direction:column;gap:8px}
+  .medrow{display:flex;align-items:center;gap:11px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:9px 12px;background:var(--surface-2)}
+  .medname{font-size:13.5px;font-weight:700;flex:0 0 106px}
+  .medrow select{flex:1;font-size:13px;padding:8px 10px}
+  @media(max-width:520px){ .medrow{flex-direction:column;align-items:stretch;gap:6px} .medname{flex:none} }
   .verfoot{text-align:center;font-size:11.5px;color:var(--faint);padding:18px 0 4px;letter-spacing:.02em}
   .verfoot strong{color:var(--muted)}
 
@@ -470,6 +496,24 @@
     <div class="cap" style="margin-top:8px">🖨 imprimir o guardar como PDF · ⬇ descargar · toca una foto para ampliarla</div>
   </div>
 </div>
+<div class="modal" id="ctl_modal">
+  <div class="modal-box">
+    <div class="modal-top">
+      <h3>Control de saldos</h3>
+      <button class="btn sec sm" id="ctl_cerrar">Cerrar</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label class="fl" for="ctl_banco">Saldo en tu cuenta bancaria</label>
+        <input type="text" inputmode="numeric" id="ctl_banco" placeholder="Ej: 16.456"></div>
+      <div class="field"><label class="fl" for="ctl_ahorro">Saldo en tu cuenta de ahorro</label>
+        <input type="text" inputmode="numeric" id="ctl_ahorro" placeholder="Ej: 3.986.166"></div>
+      <div class="full" id="ctl_out"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="ctl_listo">Guardar control</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="dup_modal">
   <div class="modal-box">
     <div class="modal-top">
@@ -589,8 +633,21 @@ function esGastoAhorro(t){
   return t==='Comisión del ahorro'||t==='Comision del ahorro'
       || t==='Pago directo desde el ahorro';
 }
+/* ¿Por dónde se mueve la plata? Un gasto en efectivo sale de tu bolsillo, uno
+   con crédito lo cobra el banco después, y uno con débito sale de tu cuenta hoy.
+   Mezclarlos en un solo saldo es lo que hace que nunca cuadre con la cartola. */
+var MEDIO_TIPO_DEF={'Efectivo':'efectivo','Débito':'banco','Debito':'banco',
+  'Transferencia':'banco','Cheque':'banco','Crédito':'credito','Credito':'credito'};
+function medioTipo(m){
+  var d=(state.mediosTipo||{})[m];
+  if(d==='banco'||d==='efectivo'||d==='credito') return d;
+  return MEDIO_TIPO_DEF[m]||'banco';
+}
+function esMedioBanco(m){ return medioTipo(m)==='banco'; }
+function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
+function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.6", APP_FECHA="03-08-2026";
+var APP_VERSION="3.8", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -619,6 +676,8 @@ function normalize(s){
   if(!s.cfgTs||typeof s.cfgTs!=='object') s.cfgTs={};
   ['disp','aho','cats','med','cierres'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
+  s.control=(s.control&&typeof s.control==='object')?s.control:{fecha:0,banco:null,ahorro:null};
+  s.mediosTipo=(s.mediosTipo&&typeof s.mediosTipo==='object')?s.mediosTipo:{};
   s.avisoDuplicado=(s.avisoDuplicado==='amplio')?'amplio':'exacto';
   s.ultimoRespaldo=+s.ultimoRespaldo||0;
   s.movimientos.forEach(function(m){
@@ -696,6 +755,20 @@ function calc(year){
   var saldoAhorro=state.saldoInicialAhorrado + sumFilter(function(m){return esDeposito(m.tipo);}) - sumFilter(function(m){return esRetiro(m.tipo);})
                   + sumFilter(function(m){return esIngresoAhorro(m.tipo);}) - sumFilter(function(m){return esGastoAhorro(m.tipo);});
   var saldoDisp=state.saldoInicialDisponible + sumFilter(function(m){return m.tipo==='Ingreso';}) - sumFilter(function(m){return m.tipo==='Gasto';}) - sumFilter(function(m){return esDeposito(m.tipo);}) + sumFilter(function(m){return esRetiro(m.tipo);});
+  /* Desglose por bolsillo: qué parte del disponible está en la cuenta bancaria,
+     qué parte es efectivo, y cuánto llevas comprometido en la tarjeta de crédito. */
+  function porMedio(fn){ var t=0; state.movimientos.forEach(function(m){ if(fn(m)) t+=(+m.monto||0); }); return t; }
+  var efeIn =porMedio(function(m){return m.tipo==='Ingreso'&&esMedioEfectivo(m.medio);})
+            +porMedio(function(m){return esRetiro(m.tipo)&&esMedioEfectivo(m.medio);});
+  var efeOut=porMedio(function(m){return m.tipo==='Gasto'&&esMedioEfectivo(m.medio);})
+            +porMedio(function(m){return esDeposito(m.tipo)&&esMedioEfectivo(m.medio);});
+  var creOut=porMedio(function(m){return m.tipo==='Gasto'&&esMedioCredito(m.medio);});
+  var creIn =porMedio(function(m){return m.tipo==='Ingreso'&&esMedioCredito(m.medio);});
+  var saldoEfectivo=efeIn-efeOut;
+  var deudaCredito=creOut-creIn;
+  /* Lo que debería mostrar la app del banco: el disponible menos el efectivo que
+     tienes en el bolsillo, más lo que aún no te cobran de la tarjeta. */
+  var saldoBanco=saldoDisp-saldoEfectivo+deudaCredito;
   // ahorro acumulado por mes hasta hoy
   var hoy=new Date(); var acumInicio=state.saldoInicialAhorrado
     + sumFilter(function(m){return esDeposito(m.tipo)&&yearOf(m)<year;})
@@ -712,7 +785,7 @@ function calc(year){
      historial. Ahora muestra el último saldo acumulado real del año elegido. */
   var acumFin=acumInicio;
   for(var k=0;k<12;k++){ if(acum[k]!=null) acumFin=acum[k]; }
-  return {ingMes:ingMes,gasMes:gasMes,ahoMes:ahoMes,dispMes:dispMes,ingAno:ingAno,gasAno:gasAno,ahoAno:ahoAno,dispAno:dispAno,saldoAhorro:saldoAhorro,saldoDisp:saldoDisp,acum:acum,acumFin:acumFin};
+  return {saldoBanco:saldoBanco,saldoEfectivo:saldoEfectivo,deudaCredito:deudaCredito,ingMes:ingMes,gasMes:gasMes,ahoMes:ahoMes,dispMes:dispMes,ingAno:ingAno,gasAno:gasAno,ahoAno:ahoAno,dispAno:dispAno,saldoAhorro:saldoAhorro,saldoDisp:saldoDisp,acum:acum,acumFin:acumFin};
 }
 function gastoPorCategoria(year){
   var map={};
@@ -787,6 +860,16 @@ function tarjetaMesActual(){
   if(acta) h+='<div class="mesnow-sello">✓ Este mes ya tiene acta de cierre</div>';
   return h+'</section>';
 }
+/* Explica de qué está hecho el disponible, para que se entienda por qué no
+   coincide con la app del banco cuando hay efectivo o tarjeta de crédito. */
+function notaDisponible(c){
+  if(!c.saldoEfectivo && !c.deudaCredito) return 'En tu cuenta bancaria hoy. Lo que ahorras sale de aquí.';
+  var p=[];
+  p.push('banco '+verSaldo(c.saldoBanco));
+  if(c.saldoEfectivo) p.push('efectivo '+verSaldo(c.saldoEfectivo));
+  if(c.deudaCredito) p.push('menos tarjeta por pagar '+verSaldo(c.deudaCredito));
+  return 'Se compone de: '+p.join(' · ')+'.';
+}
 function renderResumen(){
   var y=state.year, c=calc(y);
   var el=document.getElementById('resumen');
@@ -797,6 +880,7 @@ function renderResumen(){
   var tasaAhorro=c.ingAno>0?c.ahoAno/c.ingAno:0;
 
   var html='';
+  html+=bannerControl();
   html+=tarjetaMesActual();
   html+='<section class="ledger">'
       + '<div class="ledger-head"><span class="eyebrow">Patrimonio total</span>'
@@ -804,7 +888,7 @@ function renderResumen(){
       + '<div class="ledger-body">'
       +   '<div class="pot disp"><span class="pot-label">Sueldo disponible</span>'
       +     '<span class="pot-value num">'+verSaldo(c.saldoDisp)+'</span>'
-      +     '<span class="pot-note">En tu cuenta y efectivo hoy. Lo que ahorras sale de aquí.</span></div>'
+      +     '<span class="pot-note">'+notaDisponible(c)+'</span></div>'
       +   '<div class="pot aho"><span class="pot-label">Ahorro</span>'
       +     '<span class="pot-value num">'+verSaldo(c.saldoAhorro)+'</span>'
       +     '<span class="pot-note">Guardado y separado del sueldo del día a día.</span></div>'
@@ -1558,15 +1642,35 @@ function renderAjustes(){
   html+='<div class="savings-note"><strong>Traer todo del servidor</strong> borra los movimientos de este dispositivo y los reemplaza por los de la planilla. Úsalo solo la primera vez que conectas la tablet, o si limpiaste el navegador y necesitas recuperar todo.</div>';
   html+='</div>';
 
+  html+='<div class="card"><h2>Medios de pago</h2>'
+      + '<div class="cap">Indica por dónde se mueve la plata con cada medio. Esto es lo que permite que el sistema cuadre con tu cartola: '
+      + 'un gasto en efectivo sale de tu bolsillo y no del banco, y uno con tarjeta de crédito lo cobra el banco después, no el mismo día.</div>';
+  html+='<div class="medlist">';
+  state.medios.forEach(function(md){
+    html+='<div class="medrow"><span class="medname">'+esc(md)+'</span>'
+       + '<select data-medtipo="'+esc(md)+'">'
+       +   '<option value="banco"'+(medioTipo(md)==='banco'?' selected':'')+'>Sale del banco al momento</option>'
+       +   '<option value="efectivo"'+(medioTipo(md)==='efectivo'?' selected':'')+'>Efectivo en mi bolsillo</option>'
+       +   '<option value="credito"'+(medioTipo(md)==='credito'?' selected':'')+'>Tarjeta de crédito (se paga después)</option>'
+       + '</select></div>';
+  });
+  html+='</div>';
+  var cme=calc(state.year);
+  html+='<div class="savings-note"><strong>Tu disponible hoy:</strong> '+money(cme.saldoDisp)+'<br>'
+     + '• En la cuenta bancaria: <b>'+money(cme.saldoBanco)+'</b> — esto es lo que debe coincidir con tu app del banco<br>'
+     + '• Efectivo en el bolsillo: <b>'+money(cme.saldoEfectivo)+'</b><br>'
+     + '• Tarjeta de crédito por pagar: <b>'+money(cme.deudaCredito)+'</b></div>';
+  html+='</div>';
+
   html+='<div class="card"><h2>Cuadratura con el banco</h2><div class="cap">Escribe el saldo real que ves en tu cartola y el sistema te dice en cuánto difiere y cómo resolverlo sin descuadrar tu historial.</div>';
   html+='<div class="filters">'
-      + fld('Cuenta','<select id="cua_cta"><option value="disp">Sueldo disponible</option><option value="aho">Ahorro</option></select>')
+      + fld('Cuenta','<select id="cua_cta"><option value="disp">Cuenta corriente / vista (banco)</option><option value="aho">Cuenta de ahorro</option></select>')
       + fld('Saldo real del banco','<input type="text" inputmode="numeric" id="cua_real" placeholder="Ej: 16.456">')
       + '<div class="field"><label class="fl">&nbsp;</label><button class="btn" id="cua_ver">Comparar</button></div>'
       + '</div>';
   html+='<div id="cua_out"></div></div>';
 
-  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 23 puntos del sistema: fechas, montos, tipos, categorías, duplicados, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes, relojes, integridad para sincronizar y respaldos. Solo lee tus datos: no modifica ni borra nada.</div>';
+  html+='<div class="card"><h2>Auditoría interna</h2><div class="cap">Revisa 24 puntos del sistema: fechas, montos, tipos, categorías, duplicados, cuadratura de las dos bolsas, coherencia entre el Resumen y el Cierre, comprobantes, relojes, integridad para sincronizar y respaldos. Solo lee tus datos: no modifica ni borra nada.</div>';
   html+='<div class="filters" style="margin-bottom:4px">'
       + fld('Cuándo avisar de un repetido','<select id="aud_modo">'
         + '<option value="exacto"'+(modoAviso()==='exacto'?' selected':'')+'>Mismo día, monto y descripción (recomendado)</option>'
@@ -1625,6 +1729,14 @@ function renderAjustes(){
   syncPintaEstado();
   document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
   cargarStatsAdjuntos();
+  el.querySelectorAll('[data-medtipo]').forEach(function(sel){
+    sel.addEventListener('change',function(){
+      if(!state.mediosTipo) state.mediosTipo={};
+      state.mediosTipo[sel.getAttribute('data-medtipo')]=sel.value;
+      marcarConfig('med'); save(); renderAll();
+      toast('Medio actualizado · el saldo bancario se recalculó');
+    });
+  });
   document.getElementById('cua_ver').addEventListener('click',compararBanco);
   document.getElementById('aud_modo').addEventListener('change',function(){
     state.avisoDuplicado=this.value; save();
@@ -1883,6 +1995,124 @@ function tarjetaCierres(y){
 function nombreMes(k){ return MESES[(+k.slice(5,7))-1]+' '+k.slice(0,4); }
 
 /* =================================================================
+   CONTROL DE SALDOS
+   Guarda el último saldo real informado por el banco para cada cuenta.
+   Con eso el sistema puede avisar solo, sin que haya que ir a buscarlo.
+   ================================================================= */
+function difControl(){
+  var ctl=state.control||{}, c=calc(state.year);
+  var r={hay:false, banco:null, ahorro:null, fecha:+ctl.fecha||0,
+         sisBanco:c.saldoBanco, sisAhorro:c.saldoAhorro};
+  if(ctl.banco!==null && ctl.banco!==undefined && isFinite(+ctl.banco)){
+    r.banco={real:+ctl.banco, sis:c.saldoBanco, dif:(+ctl.banco)-c.saldoBanco};
+    if(r.banco.dif!==0) r.hay=true;
+  }
+  if(ctl.ahorro!==null && ctl.ahorro!==undefined && isFinite(+ctl.ahorro)){
+    r.ahorro={real:+ctl.ahorro, sis:c.saldoAhorro, dif:(+ctl.ahorro)-c.saldoAhorro};
+    if(r.ahorro.dif!==0) r.hay=true;
+  }
+  return r;
+}
+function diasDesdeControl(){
+  var t=+(state.control||{}).fecha||0;
+  return t?Math.floor((Date.now()-t)/86400000):null;
+}
+/* Franja de aviso en Inicio: verde si cuadra, ámbar si hay descuadre. */
+function bannerControl(){
+  var d=difControl(), dias=diasDesdeControl();
+  if(d.banco===null && d.ahorro===null){
+    return '<div class="ctlban nuevo"><div class="ctlban-txt"><strong>Controla tus saldos</strong>'
+      + '<span>Anota lo que muestra tu banco y el sistema te avisará cuando algo no cuadre.</span></div>'
+      + '<button class="btn sm" id="ctl_abrir">Comenzar</button></div>';
+  }
+  if(!d.hay){
+    return '<div class="ctlban ok"><div class="ctlban-txt"><strong>✓ Saldos cuadrados</strong>'
+      + '<span>Verificado hace '+(dias===0?'menos de un día':dias+' día'+(dias===1?'':'s'))
+      + (dias!==null&&dias>7?' · conviene volver a revisar':'')+'</span></div>'
+      + '<button class="btn sec sm" id="ctl_abrir">Revisar</button></div>';
+  }
+  var p=[];
+  if(d.banco&&d.banco.dif!==0) p.push('Cuenta bancaria <b>'+(d.banco.dif>0?'+':'−')+money(Math.abs(d.banco.dif))+'</b>');
+  if(d.ahorro&&d.ahorro.dif!==0) p.push('Ahorro <b>'+(d.ahorro.dif>0?'+':'−')+money(Math.abs(d.ahorro.dif))+'</b>');
+  return '<div class="ctlban alerta"><div class="ctlban-txt"><strong>⚠ Hay un descuadre</strong>'
+    + '<span>'+p.join(' · ')+'</span></div>'
+    + '<button class="btn sm" id="ctl_abrir">Ver detalle</button></div>';
+}
+function abrirControl(){
+  var ctl=state.control||{}, c=calc(state.year);
+  document.getElementById('ctl_banco').value = (ctl.banco===null||ctl.banco===undefined)?'':ctl.banco;
+  document.getElementById('ctl_ahorro').value= (ctl.ahorro===null||ctl.ahorro===undefined)?'':ctl.ahorro;
+  pintarControl();
+  document.getElementById('ctl_modal').classList.add('show');
+}
+function cerrarControl(){ document.getElementById('ctl_modal').classList.remove('show'); }
+function pintarControl(){
+  var c=calc(state.year), out=document.getElementById('ctl_out');
+  var rb=parseMonto(document.getElementById('ctl_banco').value);
+  var ra=parseMonto(document.getElementById('ctl_ahorro').value);
+  var h='';
+  function bloque(nombre,real,sis,cual){
+    if(!isFinite(real)) return '';
+    var dif=real-sis;
+    if(dif===0){
+      return '<div class="ctl-item ok"><span class="ctl-n">'+nombre+'</span>'
+        + '<span class="ctl-d">✓ Cuadrado en <b>'+money(sis)+'</b></span></div>';
+    }
+    var falta=dif>0;
+    return '<div class="ctl-item mal"><span class="ctl-n">'+nombre+'</span>'
+      + '<span class="ctl-dif">'+(falta?'+':'−')+money(Math.abs(dif))+'</span>'
+      + '<span class="ctl-d">Banco <b>'+money(real)+'</b> · Sistema <b>'+money(sis)+'</b><br>'
+      + (falta?'Falta registrar un ingreso, o hay un gasto anotado de más.'
+              :'Falta registrar un gasto, un cargo automático o una comisión.')+'</span>'
+      + '<span class="ctl-acc"><button class="btn sm" data-ctlmov="'+cual+'|'+dif+'">Registrar la diferencia</button>'
+      + '<button class="btn sec sm" data-ctlaj="'+cual+'|'+dif+'">Ajustar saldo inicial</button></span></div>';
+  }
+  h+=bloque('Cuenta bancaria',rb,c.saldoBanco,'disp');
+  h+=bloque('Cuenta de ahorro',ra,c.saldoAhorro,'aho');
+  if(!h) h='<div class="cap">Escribe al menos un saldo para comparar.</div>';
+  else if(c.saldoEfectivo||c.deudaCredito){
+    h+='<div class="savings-note">Tu disponible total es '+money(c.saldoDisp)+', pero en el banco tienes '
+     + money(c.saldoBanco)+'. La diferencia es tu efectivo y lo comprometido en la tarjeta: eso es normal y no es un descuadre.</div>';
+  }
+  out.innerHTML=h;
+  out.querySelectorAll('[data-ctlmov]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var p=b.getAttribute('data-ctlmov').split('|');
+      registrarDiferencia(+p[1],p[0]); guardarControl(); pintarControl();
+    });
+  });
+  out.querySelectorAll('[data-ctlaj]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var p=b.getAttribute('data-ctlaj').split('|'), dif=+p[1];
+      if(p[0]==='disp') state.saldoInicialDisponible+=dif; else state.saldoInicialAhorrado+=dif;
+      marcarConfig(p[0]==='disp'?'disp':'aho'); save(); renderAll();
+      guardarControl(); pintarControl(); toast('Saldo inicial ajustado');
+    });
+  });
+}
+function guardarControl(){
+  var rb=parseMonto(document.getElementById('ctl_banco').value);
+  var ra=parseMonto(document.getElementById('ctl_ahorro').value);
+  state.control={ fecha:Date.now(),
+    banco: isFinite(rb)?rb:null,
+    ahorro: isFinite(ra)?ra:null };
+  marcarConfig('disp'); save(); renderAll();
+}
+function initControl(){
+  document.getElementById('ctl_cerrar').addEventListener('click',cerrarControl);
+  document.getElementById('ctl_listo').addEventListener('click',function(){
+    guardarControl(); cerrarControl();
+    var d=difControl();
+    toast(d.hay?'Descuadre registrado · el aviso queda en Inicio':'Saldos cuadrados y guardados');
+  });
+  ['ctl_banco','ctl_ahorro'].forEach(function(id){
+    document.getElementById(id).addEventListener('input',pintarControl);
+  });
+  var ov=document.getElementById('ctl_modal');
+  ov.addEventListener('click',function(e){ if(e.target===ov) cerrarControl(); });
+}
+
+/* =================================================================
    CUADRATURA CON EL BANCO
    Compara el saldo del sistema con el de tu cartola y ofrece dos
    caminos: registrar la diferencia como movimiento (deja rastro) o
@@ -1894,13 +2124,21 @@ function compararBanco(){
   var out=document.getElementById('cua_out');
   if(!isFinite(real)){ toast('Escribe el saldo que aparece en tu cartola'); return; }
   var c=calc(state.year);
-  var sis=(cta==='disp')?c.saldoDisp:c.saldoAhorro;
+  /* Se compara contra el saldo BANCARIO, que es lo que muestra la app del banco:
+     excluye el efectivo del bolsillo y lo que aún no te cobra la tarjeta. */
+  var sis=(cta==='disp')?c.saldoBanco:c.saldoAhorro;
   var dif=real-sis;
-  var nombre=(cta==='disp')?'Sueldo disponible':'Ahorro';
+  var nombre=(cta==='disp')?'Cuenta bancaria':'Ahorro';
   if(dif===0){
+    var extra='';
+    if(cta==='disp'&&(c.saldoEfectivo||c.deudaCredito)){
+      extra='<br>Además tienes '+(c.saldoEfectivo?money(c.saldoEfectivo)+' en efectivo':'')
+          +(c.saldoEfectivo&&c.deudaCredito?' y ':'')
+          +(c.deudaCredito?money(c.deudaCredito)+' por pagar de la tarjeta':'')+'.';
+    }
     out.innerHTML='<div class="aud-row"><span class="aud-ico">✅</span><span class="aud-txt">'
       +'<span class="aud-t">'+nombre+' cuadrado</span>'
-      +'<span class="aud-d">El sistema y tu banco marcan lo mismo: <b>'+money(real)+'</b>.</span></span></div>';
+      +'<span class="aud-d">El sistema y tu banco marcan lo mismo: <b>'+money(real)+'</b>.'+extra+'</span></span></div>';
     return;
   }
   var falta=dif>0;
@@ -1910,6 +2148,15 @@ function compararBanco(){
     +(falta?'El sistema muestra <b>menos</b> que el banco: falta registrar un ingreso, o hay un gasto de más (quizá repetido).'
            :'El sistema muestra <b>más</b> que el banco: falta registrar un gasto, un cargo automático o una comisión.')
     +'</span></span></div>';
+  if(cta==='disp' && (c.saldoEfectivo||c.deudaCredito)){
+    h+='<div class="aud-row"><span class="aud-ico">ℹ️</span><span class="aud-txt">'
+     + '<span class="aud-t">Cómo se compone tu disponible</span><span class="aud-d">'
+     + 'Disponible total <b>'+money(c.saldoDisp)+'</b> = en el banco <b>'+money(c.saldoBanco)+'</b>'
+     + (c.saldoEfectivo?' + efectivo en tu bolsillo <b>'+money(c.saldoEfectivo)+'</b>':'')
+     + (c.deudaCredito?' − tarjeta de crédito por pagar <b>'+money(c.deudaCredito)+'</b>':'')
+     + '.<br>Arriba comparamos solo la parte del banco, que es lo que ves en tu cartola.'
+     + '</span></span></div>';
+  }
   var pista = (cta==='aho')
     ? (falta?'En una cuenta de ahorro esto casi siempre son <b>intereses o reajuste</b> que el banco te abonó.'
             :'En una cuenta de ahorro esto casi siempre es una <b>comisión o cargo</b> del banco.')
@@ -1946,8 +2193,13 @@ function registrarDiferencia(dif,cta){
     desc = 'Cuadratura con la cartola del banco';
   }
   if(lista.indexOf(cat)<0){ lista.push(cat); marcarConfig('cats'); }
+  /* FIX: antes usaba el primer medio de la lista (Efectivo), que no pasa por el
+     banco. La diferencia quedaba registrada pero el saldo bancario seguía
+     descuadrado. Ahora se elige siempre un medio que sí mueve la cuenta. */
+  var medioBanco=(state.medios||[]).filter(function(md){ return esMedioBanco(md); })[0]
+              || (state.medios||[])[0] || 'Débito';
   state.movimientos.push({id:uid(),fecha:todayISO(),tipo:tipo,categoria:cat,
-    descripcion:desc,medio:state.medios[0]||'Débito',
+    descripcion:desc,medio:medioBanco,
     monto:Math.abs(dif),adjs:[],actualizado:Date.now()});
   marcarUsado(); save(); renderAll();
   toast('Registrado: '+tipo+' de '+money(Math.abs(dif)));
@@ -2181,7 +2433,19 @@ function construirAuditoria(archivos){
       :diasResp>30?'Último respaldo hace '+diasResp+' días. Conviene exportar uno.'
       :'Último respaldo hace '+diasResp+' día(s). Al día.');
 
-  /* 21. actas de cierre vs movimientos reales */
+  /* 21. mezcla de bolsillos: la causa más común de descuadre con el banco */
+  var cB=calc(state.year);
+  var nEfe=movs.filter(function(m){return esMedioEfectivo(m.medio);}).length;
+  var nCre=movs.filter(function(m){return esMedioCredito(m.medio);}).length;
+  add((cB.saldoEfectivo||cB.deudaCredito)?'warn':'ok','Efectivo y tarjeta de crédito',
+      (cB.saldoEfectivo||cB.deudaCredito)
+        ? 'Tu disponible de '+money(cB.saldoDisp)+' NO es lo que muestra tu banco. En el banco tienes <b>'+money(cB.saldoBanco)+'</b>'
+          + (cB.saldoEfectivo?', más '+money(cB.saldoEfectivo)+' en efectivo ('+nEfe+' movimiento(s))':'')
+          + (cB.deudaCredito?', menos '+money(cB.deudaCredito)+' comprometidos en la tarjeta ('+nCre+' movimiento(s))':'')
+          + '. Al cuadrar con la cartola compara contra el saldo bancario, no contra el disponible total.'
+        : 'Todos tus movimientos pasan por el banco, así que el disponible coincide directo con tu cartola.');
+
+  /* 22. actas de cierre vs movimientos reales */
   var desfase=[];
   (state.cierres||[]).forEach(function(c){
     var a=+c.mes.slice(0,4), mm=+c.mes.slice(5,7);
@@ -2195,13 +2459,13 @@ function construirAuditoria(archivos){
       :desfase.length?desfase.length+' acta(s) ya no coinciden con los movimientos: '+lista(desfase,2)+'. Alguien editó el mes después de cerrarlo. Reabre el mes y ciérralo de nuevo para regenerar el acta.'
       :(state.cierres||[]).length+' acta(s) de cierre y todas coinciden con los movimientos actuales.');
 
-  /* 22. espacio en localStorage */
+  /* 23. espacio en localStorage */
   var bytes=0; try{ bytes=JSON.stringify(state).length; }catch(e){}
   var kb=Math.round(bytes/1024);
   add(kb>4000?'warn':'ok','Espacio de datos',
       kb+' KB usados por los movimientos'+(kb>4000?'. Te acercas al límite del navegador (≈5 MB); exporta un respaldo.':' (el límite del navegador es ≈5 MB).'));
 
-  /* 23. sincronización */
+  /* 24. sincronización */
   var sc=syncCfg();
   var sinTs=movs.filter(function(m){ return !(+m.actualizado); }).length;
   if(!syncActivo()){
@@ -2411,7 +2675,8 @@ function syncPayload(){
       saldoInicialDisponible: state.saldoInicialDisponible,
       cierres: state.cierres||[],
       categorias: state.categorias,
-      medios: state.medios
+      medios: state.medios,
+      mediosTipo: state.mediosTipo||{}
     },
     configActualizado: +state.configActualizado||0,
     cfgTs: state.cfgTs||{}
@@ -2502,7 +2767,11 @@ function syncAplicar(resp){
       state.saldoInicialAhorrado=+c.saldoInicialAhorrado||0; state.cfgTs.aho=+rts.aho||base; cambios++;
     }
     if(c.categorias && gana('cats')){ state.categorias=c.categorias; state.cfgTs.cats=+rts.cats||base; cambios++; }
-    if(c.medios && gana('med')){ state.medios=c.medios; state.cfgTs.med=+rts.med||base; cambios++; }
+    if(c.medios && gana('med')){
+      state.medios=c.medios;
+      if(c.mediosTipo && typeof c.mediosTipo==='object') state.mediosTipo=c.mediosTipo;
+      state.cfgTs.med=+rts.med||base; cambios++;
+    }
     /* Las actas se unen en vez de reemplazarse: un cierre hecho en la tablet y
        otro en el teléfono deben convivir, nunca perderse. */
     if(Array.isArray(c.cierres)){
@@ -2663,6 +2932,7 @@ document.getElementById('syncBtn').addEventListener('click',function(){ syncAhor
 initVisor();
 initEditor();
 initDuplicado();
+initControl();
 buildYearSel();
 renderAll();
 syncPintaEstado();
