@@ -88,13 +88,13 @@
     .tab .ti{display:inline;font-size:14px;margin-right:6px}
     .tab .tl{display:inline;font-size:13.5px}
   }
-  main{max-width:1080px;margin:0 auto;padding:22px 16px}
+  main{max-width:1080px;margin:0 auto;padding:18px 16px 22px}
   .view{display:none}
   .view.active{display:block}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
   /* ---------- franja de control de saldos ---------- */
-  .ctlban{display:flex;align-items:center;gap:12px;border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px;border:1px solid var(--line)}
+  .ctlban{display:flex;align-items:center;gap:12px;scroll-margin-top:120px;border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px;border:1px solid var(--line)}
   .ctlban.ok{background:var(--in-bg);border-color:#BFE3CE}
   .ctlban.alerta{background:var(--back-bg);border-color:#E8D3A4}
   .ctlban.nuevo{background:var(--save-bg);border-color:#D3E0F1}
@@ -647,7 +647,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.8", APP_FECHA="03-08-2026";
+var APP_VERSION="3.9", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -943,6 +943,21 @@ function renderResumen(){
   document.getElementById('aj_disp').addEventListener('click',function(){ ajustarSaldo('disp',c.saldoDisp); });
   document.getElementById('aj_aho').addEventListener('click',function(){ ajustarSaldo('aho',c.saldoAhorro); });
   document.getElementById('ojo_disp').addEventListener('click',toggleOcultar);
+  /* FIX: estos listeners no se estaban conectando, así que el botón de la
+     franja de control y los atajos del mes en curso no hacían nada. */
+  var ba=el.querySelector('#ctl_abrir');
+  if(ba) ba.addEventListener('click',abrirControl);
+  el.querySelectorAll('[data-ira]').forEach(function(b){
+    b.addEventListener('click',function(){ irAVista(b.getAttribute('data-ira')); });
+  });
+  el.querySelectorAll('[data-mesver]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var k=b.getAttribute('data-mesver');
+      filtro={mes:String(+k.slice(5,7)),tipo:'todos',cat:'todos',desde:'',hasta:''};
+      state.year=+k.slice(0,4); save();
+      renderMovimientos(); irAVista('movimientos');
+    });
+  });
 }
 function verSaldo(v){ return state.ocultarSaldos ? '$ ••••••' : money(v); }
 function toggleOcultar(){ state.ocultarSaldos=!state.ocultarSaldos; save(); renderAll(); }
@@ -2951,6 +2966,10 @@ setTimeout(function(){
     }
   }catch(e){}
 },300);
+
+/* Si hay un descuadre pendiente, la vista parte arriba para que la franja de
+   aviso quede a la vista y no oculta por el desplazamiento. */
+try{ if(difControl().hay) window.scrollTo(0,0); }catch(e){}
 
 if(syncActivo() && syncCfg().auto) syncAhora(true);
 </script>
