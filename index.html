@@ -113,6 +113,17 @@
   .ctl-guia strong{color:var(--ink)}
   .ctl-hint{display:block;font-size:11.5px;color:var(--muted);margin-top:5px}
   .ctl-hint b{color:var(--ink)}
+  .conc{border:1px solid var(--line);border-radius:var(--r-sm);margin:-4px 0 12px;background:var(--surface)}
+  .conc summary{font-size:12.5px;color:var(--save);cursor:pointer;font-weight:700;padding:10px 12px}
+  .conc-b{padding:0 12px 12px}
+  .conc-t{width:100%;font-size:12.5px}
+  .conc-t td{padding:6px 4px;border-bottom:1px solid var(--line-2)}
+  .conc-t td.num{text-align:right;font-weight:600;white-space:nowrap}
+  .conc-ini td,.conc-fin td{font-weight:700;background:var(--surface-2)}
+  .conc-aj td{background:var(--back-bg)}
+  .conc-tag{font-size:9.5px;background:var(--back);color:#fff;padding:1px 6px;border-radius:999px;vertical-align:middle}
+  .conc-real td{font-weight:700}
+  .conc-dif td{font-weight:700;background:var(--out-bg);color:var(--out);border-bottom:none}
   .ctl-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 13px;margin-bottom:10px}
   .ctl-item.ok{background:var(--in-bg);border-color:#BFE3CE}
   .ctl-item.mal{background:var(--out-bg);border-color:#EFC5B8}
@@ -659,7 +670,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="4.3", APP_FECHA="03-08-2026";
+var APP_VERSION="4.4", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -688,6 +699,7 @@ function normalize(s){
   if(!s.cfgTs||typeof s.cfgTs!=='object') s.cfgTs={};
   ['disp','aho','cats','med','cierres'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
+  s.ajustes=Array.isArray(s.ajustes)?s.ajustes:[];
   s.control=(s.control&&typeof s.control==='object')?s.control:{fecha:0,banco:null,ahorro:null};
   s.mediosTipo=(s.mediosTipo&&typeof s.mediosTipo==='object')?s.mediosTipo:{};
   s.avisoDuplicado=(s.avisoDuplicado==='amplio')?'amplio':'exacto';
@@ -717,6 +729,14 @@ function ahoraSeguro(){
   (state.movimientos||[]).forEach(function(m){ if(+m.actualizado>max) max=+m.actualizado; });
   CFG_CAMPOS.forEach(function(k){ var v=+(state.cfgTs||{})[k]||0; if(v>max) max=v; });
   return (max>t+86400000) ? max+60000 : t;
+}
+/* Los ajustes al saldo inicial no creaban ningún registro, así que la plata
+   aparecía o desaparecía sin rastro. Ahora quedan anotados. */
+function anotarAjuste(cual,delta,motivo){
+  if(!delta) return;
+  if(!Array.isArray(state.ajustes)) state.ajustes=[];
+  state.ajustes.push({fecha:Date.now(),cual:cual,delta:delta,motivo:motivo||'Ajuste manual'});
+  if(state.ajustes.length>200) state.ajustes=state.ajustes.slice(-200);
 }
 function marcarConfig(campo){
   var t=ahoraSeguro();
@@ -2079,6 +2099,71 @@ function bannerControl(){
     + '</span></div>'
     + '<button class="btn sm" id="ctl_abrir">Ver detalle</button></div>';
 }
+/* Reconstruye, movimiento por movimiento, cómo se llegó del saldo que
+   informaste la última vez al saldo que el sistema calcula hoy. Así se ve
+   exactamente qué falta o qué sobra al comparar con la cartola. */
+function conciliacion(cual){
+  var ctl=state.control||{}, desde=+ctl.fecha||0;
+  var base = (cual==='disp') ? ctl.banco : ctl.ahorro;
+  if(!desde || base===null || base===undefined || !isFinite(+base)) return null;
+  base=+base;
+  var items=[];
+  (state.movimientos||[]).forEach(function(m){
+    if((+m.actualizado||0)<=desde) return;
+    var v=+m.monto||0, ef=0;
+    if(cual==='disp'){
+      if(!esMedioBanco(m.medio)) return;
+      if(m.tipo==='Ingreso') ef=v;
+      else if(m.tipo==='Gasto') ef=-v;
+      else if(esDeposito(m.tipo)) ef=-v;
+      else if(esRetiro(m.tipo)) ef=v;
+      else return;
+    } else {
+      if(esDeposito(m.tipo)) ef=v;
+      else if(esRetiro(m.tipo)) ef=-v;
+      else if(esIngresoAhorro(m.tipo)) ef=v;
+      else if(esGastoAhorro(m.tipo)) ef=-v;
+      else return;
+    }
+    items.push({fecha:m.fecha,desc:m.descripcion||m.categoria||m.tipo,tipo:m.tipo,ef:ef,ts:+m.actualizado||0});
+  });
+  (state.ajustes||[]).forEach(function(a){
+    if((+a.fecha||0)<=desde) return;
+    var esta=(cual==='disp')?(a.cual==='disp'):(a.cual==='aho');
+    if(!esta) return;
+    items.push({fecha:isoLocal(new Date(a.fecha)),desc:a.motivo,tipo:'AJUSTE',ef:+a.delta||0,ts:+a.fecha||0,aj:true});
+  });
+  items.sort(function(x,y){ return x.ts-y.ts; });
+  var run=base;
+  items.forEach(function(it){ run+=it.ef; it.saldo=run; });
+  return {base:base, desde:desde, items:items, esperado:run};
+}
+function tablaConciliacion(cual,real){
+  var co=conciliacion(cual);
+  if(!co) return '';
+  var nombre=(cual==='disp')?'cuenta bancaria':'cuenta de ahorro';
+  var h='<details class="conc"'+(co.items.length?' open':'')+'><summary>Ver los '+co.items.length+' movimiento'+(co.items.length===1?'':'s')+' desde la última revisión</summary>';
+  h+='<div class="conc-b"><table class="conc-t"><tbody>';
+  h+='<tr class="conc-ini"><td>Informado el '+fmtFecha(isoLocal(new Date(co.desde)))+'</td><td class="num">'+money(co.base)+'</td></tr>';
+  co.items.forEach(function(it){
+    h+='<tr'+(it.aj?' class="conc-aj"':'')+'><td>'+fmtFecha(it.fecha)+' · '+esc(String(it.desc).slice(0,26))
+      + (it.aj?' <span class="conc-tag">ajuste</span>':'')+'</td>'
+      + '<td class="num" style="color:'+(it.ef<0?'var(--out)':'var(--in)')+'">'+(it.ef>0?'+':'')+money(it.ef)+'</td></tr>';
+  });
+  h+='<tr class="conc-fin"><td>El sistema espera</td><td class="num">'+money(co.esperado)+'</td></tr>';
+  if(isFinite(real)){
+    h+='<tr class="conc-real"><td>El banco dice</td><td class="num">'+money(real)+'</td></tr>';
+    var d=real-co.esperado;
+    h+='<tr class="conc-dif"><td>'+(d===0?'Cuadra':'Falta explicar')+'</td><td class="num">'+(d>0?'+':'')+money(d)+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  if(isFinite(real) && real!==co.esperado){
+    h+='<div class="cap" style="margin-top:9px">Compara esta lista con la cartola del BCI. '
+     + 'Si en el banco hay un cargo que no está acá, ese es el que falta registrar. '
+     + 'Los marcados como <b>ajuste</b> no vienen del banco: los hiciste a mano.</div>';
+  }
+  return h+'</div></details>';
+}
 function abrirControl(){
   var ctl=state.control||{}, c=calc(state.year);
   document.getElementById('ctl_banco').value = (ctl.banco===null||ctl.banco===undefined)?'':ctl.banco;
@@ -2130,7 +2215,9 @@ function pintarControl(){
      + '</div>';
   }
   h+=bloque('Cuenta bancaria',rb,c.saldoBanco,'disp');
+  h+=tablaConciliacion('disp',rb);
   h+=bloque('Cuenta de ahorro',ra,c.saldoAhorro,'aho');
+  h+=tablaConciliacion('aho',ra);
   if(!h) h='<div class="cap">Escribe al menos un saldo para comparar.</div>';
   else if(c.saldoEfectivo||c.deudaCredito){
     h+='<div class="savings-note">Tu disponible total es '+money(c.saldoDisp)+', pero en el banco tienes '
@@ -2157,6 +2244,7 @@ function pintarControl(){
     b.addEventListener('click',function(){
       var p=b.getAttribute('data-ctlaj').split('|'), dif=+p[1];
       if(p[0]==='disp') state.saldoInicialDisponible+=dif; else state.saldoInicialAhorrado+=dif;
+      anotarAjuste(p[0],dif,'Ajuste desde el control de saldos');
       marcarConfig(p[0]==='disp'?'disp':'aho'); save(); renderAll();
       guardarControl(); pintarControl(); toast('Saldo inicial ajustado');
     });
@@ -2249,6 +2337,7 @@ function compararBanco(){
   if(bm) bm.addEventListener('click',function(){ registrarDiferencia(dif,cta); });
   document.getElementById('cua_aj').addEventListener('click',function(){
     if(cta==='disp') state.saldoInicialDisponible+=dif; else state.saldoInicialAhorrado+=dif;
+    anotarAjuste(cta,dif,'Ajuste desde la cuadratura');
     marcarConfig(cta==='disp'?'disp':'aho');
     save(); renderAll(); toast(nombre+' ajustado a '+money(real));
   });
