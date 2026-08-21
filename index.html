@@ -88,22 +88,25 @@
     .tab .ti{display:inline;font-size:14px;margin-right:6px}
     .tab .tl{display:inline;font-size:13.5px}
   }
-  main{max-width:1080px;margin:0 auto;padding:18px 16px 22px}
+  main{max-width:1080px;margin:0 auto;padding:16px 16px 24px}
   .view{display:none}
   .view.active{display:block}
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
   /* ---------- franja de control de saldos ---------- */
-  .ctlban{display:flex;align-items:center;gap:12px;scroll-margin-top:120px;border-radius:var(--r-sm);padding:12px 14px;margin-bottom:14px;border:1px solid var(--line)}
+  .ctlban{display:block;scroll-margin-top:130px;border-radius:var(--r-sm);padding:14px;margin-bottom:14px;border:1px solid var(--line);position:relative;z-index:1}
   .ctlban.ok{background:var(--in-bg);border-color:#BFE3CE}
   .ctlban.alerta{background:var(--back-bg);border-color:#E8D3A4}
   .ctlban.nuevo{background:var(--save-bg);border-color:#D3E0F1}
   .ctlban-txt{flex:1;min-width:0}
-  .ctlban-txt strong{display:block;font-size:13.5px}
+  .ctlban-txt strong{display:block;font-size:15px}
   .ctlban.ok strong{color:var(--in)} .ctlban.alerta strong{color:var(--back)} .ctlban.nuevo strong{color:var(--save)}
-  .ctlban-txt span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
-  .ctlban button{flex:none}
-  @media(max-width:480px){ .ctlban{flex-direction:column;align-items:stretch} .ctlban button{width:100%} }
+  .ctlban-txt span{display:block;font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.45}
+  .ctlban button{width:100%;margin-top:11px}
+  @media(min-width:721px){
+    .ctlban{display:flex;align-items:center;gap:14px}
+    .ctlban button{width:auto;margin-top:0;flex:none}
+  }
   .ctl-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 13px;margin-bottom:10px}
   .ctl-item.ok{background:var(--in-bg);border-color:#BFE3CE}
   .ctl-item.mal{background:var(--out-bg);border-color:#EFC5B8}
@@ -647,7 +650,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.9", APP_FECHA="03-08-2026";
+var APP_VERSION="4.0", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -2967,9 +2970,15 @@ setTimeout(function(){
   }catch(e){}
 },300);
 
-/* Si hay un descuadre pendiente, la vista parte arriba para que la franja de
-   aviso quede a la vista y no oculta por el desplazamiento. */
-try{ if(difControl().hay) window.scrollTo(0,0); }catch(e){}
+/* El navegador recuerda dónde quedaste y al recargar abría la app a media
+   página, dejando la franja de aviso cortada bajo el menú. Se desactiva esa
+   restauración y siempre se parte arriba. */
+try{
+  if('scrollRestoration' in history) history.scrollRestoration='manual';
+  window.scrollTo(0,0);
+  setTimeout(function(){ window.scrollTo(0,0); },60);
+  setTimeout(function(){ window.scrollTo(0,0); },350);
+}catch(e){}
 
 if(syncActivo() && syncCfg().auto) syncAhora(true);
 </script>
