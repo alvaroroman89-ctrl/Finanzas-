@@ -556,7 +556,7 @@ var DEFAULT = {
   categorias: {
     ingreso: ["Sueldo","Honorarios","Bono / Aguinaldo","Arriendo recibido","Intereses / Dividendos","Devolución impuestos","Venta","Regalo / Transferencia recibida","Reembolso","Otros ingresos"],
     gasto: ["Arriendo / Dividendo","Gastos comunes","Luz","Agua","Gas","Internet hogar","Teléfono","TV cable","Supermercado","Transporte","Bencina","Salud","Educación","Restaurant / Delivery","Entretención","Compras","Suscripciones","Tarjeta de crédito","Créditos / Deudas","Mascotas","Regalos","Impuestos","Otros gastos"],
-    ahorro: ["Cuenta de ahorro","Depósito a plazo","Fondo mutuo","APV","Ahorro emergencias","Ahorro vivienda","Otros ahorros"]
+    ahorro: ["Cuenta de ahorro","Depósito a plazo","Fondo mutuo","APV","Ahorro emergencias","Ahorro vivienda","Vale vista recibido","Transferencia recibida","Interés / reajuste","Otros ahorros"]
   },
   medios: ["Efectivo","Débito","Crédito","Transferencia","Cheque"],
   movimientos: [
@@ -573,14 +573,24 @@ var DEFAULT = {
   _esNuevo: true         // instalación recién estrenada: aún no tiene datos propios
 };
 
-var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente","Interés del ahorro","Comisión del ahorro"];
+var TIPOS=["Ingreso","Gasto","Ahorro","Retiro ahorro","Cuenta corriente a cuenta de ahorro","Cuenta de ahorro a cuenta corriente","Ingreso directo al ahorro","Pago directo desde el ahorro","Interés del ahorro","Comisión del ahorro"];
 function esDeposito(t){ return t==='Ahorro'||t==='Traspaso a ahorro'||t==='Cuenta corriente a cuenta de ahorro'; }
 /* Plata que nace o muere DENTRO de la cuenta de ahorro: intereses, reajustes,
    comisiones. No pasan por el sueldo disponible, por eso no son traslados. */
-function esIngresoAhorro(t){ return t==='Interés del ahorro'||t==='Interes del ahorro'; }
-function esGastoAhorro(t){ return t==='Comisión del ahorro'||t==='Comision del ahorro'; }
+/* Plata que ENTRA a la cuenta de ahorro sin pasar por la cuenta corriente:
+   un vale vista depositado ahí, una transferencia de un tercero, intereses. */
+function esIngresoAhorro(t){
+  return t==='Interés del ahorro'||t==='Interes del ahorro'
+      || t==='Ingreso directo al ahorro';
+}
+/* Plata que SALE de la cuenta de ahorro sin pasar por la cuenta corriente:
+   un pago hecho directamente desde el ahorro, comisiones del banco. */
+function esGastoAhorro(t){
+  return t==='Comisión del ahorro'||t==='Comision del ahorro'
+      || t==='Pago directo desde el ahorro';
+}
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="3.5", APP_FECHA="03-08-2026";
+var APP_VERSION="3.6", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
