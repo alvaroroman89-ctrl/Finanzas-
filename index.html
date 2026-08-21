@@ -670,7 +670,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="4.4", APP_FECHA="03-08-2026";
+var APP_VERSION="4.5", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -1689,6 +1689,26 @@ function renderAjustes(){
   html+='<div class="savings-note"><strong>Traer todo del servidor</strong> borra los movimientos de este dispositivo y los reemplaza por los de la planilla. Úsalo solo la primera vez que conectas la tablet, o si limpiaste el navegador y necesitas recuperar todo.</div>';
   html+='</div>';
 
+  var ajs=(state.ajustes||[]).slice().reverse();
+  html+='<div class="card"><h2>Ajustes manuales al saldo</h2>'
+      + '<div class="cap">Estos ajustes cambian el saldo sin crear un movimiento. Son la causa más común de que las cuentas '
+      + 'dejen de calzar con la cartola, así que conviene revisarlos.</div>';
+  if(!ajs.length){
+    html+='<div class="cap" style="margin:0">Sin ajustes registrados en este dispositivo. Los hechos antes de la versión 4.4 no quedaron anotados: si sospechas de uno, corrígelo en «Saldos iniciales» más abajo.</div>';
+  } else {
+    html+='<div class="medlist">';
+    ajs.forEach(function(a,i){
+      var idx=(state.ajustes.length-1-i);
+      html+='<div class="medrow"><span class="medname" style="flex:1 1 auto">'
+        + (a.delta>0?'+':'')+money(a.delta)+' · '+(a.cual==='disp'?'disponible':'ahorro')
+        + '<span style="display:block;font-size:11.5px;color:var(--muted);font-weight:400">'
+        + fmtFecha(isoLocal(new Date(a.fecha)))+' · '+esc(a.motivo||'')+'</span></span>'
+        + '<button class="btn danger sm" data-desaj="'+idx+'">Deshacer</button></div>';
+    });
+    html+='</div>';
+  }
+  html+='</div>';
+
   html+='<div class="card"><h2>Medios de pago</h2>'
       + '<div class="cap">Indica por dónde se mueve la plata con cada medio. Esto es lo que permite que el sistema cuadre con tu cartola: '
       + 'un gasto en efectivo sale de tu bolsillo y no del banco, y uno con tarjeta de crédito lo cobra el banco después, no el mismo día.</div>';
@@ -1776,6 +1796,17 @@ function renderAjustes(){
   syncPintaEstado();
   document.getElementById('adj_archivar').addEventListener('click',function(){ archivarComprobantes(+document.getElementById('adj_edad').value); });
   cargarStatsAdjuntos();
+  el.querySelectorAll('[data-desaj]').forEach(function(b){
+    b.addEventListener('click',function(){
+      var i=+b.getAttribute('data-desaj'), a=(state.ajustes||[])[i];
+      if(!a) return;
+      if(!confirm('¿Deshacer el ajuste de '+money(a.delta)+' en el '+(a.cual==='disp'?'disponible':'ahorro')+'?')) return;
+      if(a.cual==='disp') state.saldoInicialDisponible-=a.delta; else state.saldoInicialAhorrado-=a.delta;
+      state.ajustes.splice(i,1);
+      marcarConfig(a.cual==='disp'?'disp':'aho'); save(); renderAll();
+      toast('Ajuste deshecho');
+    });
+  });
   el.querySelectorAll('[data-medtipo]').forEach(function(sel){
     sel.addEventListener('change',function(){
       if(!state.mediosTipo) state.mediosTipo={};
@@ -2199,6 +2230,20 @@ function pintarControl(){
   /* Caso frecuente: la persona registra todo mirando la cartola, así que cada
      movimiento ya pasó por el banco aunque lleve etiqueta Efectivo o Crédito.
      Se detecta porque el saldo informado coincide con el disponible total. */
+  /* Error frecuente: copiar de la cartola el monto de una transacción (por
+     ejemplo el abono del sueldo) en vez del SALDO de la cuenta. */
+  function avisaMonto(v,cual){
+    if(!isFinite(v)) return '';
+    var m=(state.movimientos||[]).filter(function(x){ return (+x.monto||0)===v; })[0];
+    if(!m) return '';
+    return '<div class="savings-note" style="border-left-color:var(--back);background:var(--back-bg)">'
+      + '<strong>Ojo:</strong> '+money(v)+' es el monto de un movimiento que ya tienes registrado '
+      + '(«'+esc(m.descripcion||m.categoria||m.tipo)+'» del '+fmtFecha(m.fecha)+'), no un saldo.<br>'
+      + 'En la cartola del banco, el <b>saldo</b> es el número grande de arriba; los de abajo son las transacciones.'
+      + '</div>';
+  }
+  h+=avisaMonto(rb,'disp');
+  h+=avisaMonto(ra,'aho');
   if(isFinite(rb) && rb===c.saldoDisp && rb!==c.saldoBanco){
     h+='<div class="savings-note" style="border-left-color:var(--in);background:var(--in-bg)">'
      + '<strong>El banco coincide con tu disponible total.</strong> Eso significa que todos tus movimientos '
