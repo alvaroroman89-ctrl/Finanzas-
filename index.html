@@ -98,6 +98,8 @@
   .ctlban.ok{background:var(--in-bg);border-color:#BFE3CE}
   .ctlban.alerta{background:var(--back-bg);border-color:#E8D3A4}
   .ctlban.nuevo{background:var(--save-bg);border-color:#D3E0F1}
+  .ctlban.aviso{background:var(--surface-2);border-color:var(--line)}
+  .ctlban.aviso strong{color:var(--muted)}
   .ctlban-txt{flex:1;min-width:0}
   .ctlban-txt strong{display:block;font-size:15px}
   .ctlban.ok strong{color:var(--in)} .ctlban.alerta strong{color:var(--back)} .ctlban.nuevo strong{color:var(--save)}
@@ -657,7 +659,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="4.2", APP_FECHA="03-08-2026";
+var APP_VERSION="4.3", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -2025,18 +2027,27 @@ function nombreMes(k){ return MESES[(+k.slice(5,7))-1]+' '+k.slice(0,4); }
    Con eso el sistema puede avisar solo, sin que haya que ir a buscarlo.
    ================================================================= */
 function difControl(){
-  var ctl=state.control||{}, c=calc(state.year);
-  var r={hay:false, banco:null, ahorro:null, fecha:+ctl.fecha||0,
-         sisBanco:c.saldoBanco, sisAhorro:c.saldoAhorro};
-  if(ctl.banco!==null && ctl.banco!==undefined && isFinite(+ctl.banco)){
-    r.banco={real:+ctl.banco, sis:c.saldoBanco, dif:(+ctl.banco)-c.saldoBanco};
+  /* FIX: antes se comparaba el saldo del banco (congelado al momento de la
+     revisión) contra el saldo del sistema HOY. Cada compra nueva hacía crecer
+     una diferencia falsa. Ahora la diferencia queda registrada tal como estaba
+     cuando revisaste, y lo que cambia después es un aviso de "vuelve a revisar". */
+  var ctl=state.control||{};
+  var r={hay:false, banco:null, ahorro:null, fecha:+ctl.fecha||0, nuevos:movimientosDesdeControl()};
+  if(ctl.difBanco!==null && ctl.difBanco!==undefined && isFinite(+ctl.difBanco)){
+    r.banco={real:+ctl.banco, sis:+ctl.sisBanco, dif:+ctl.difBanco};
     if(r.banco.dif!==0) r.hay=true;
   }
-  if(ctl.ahorro!==null && ctl.ahorro!==undefined && isFinite(+ctl.ahorro)){
-    r.ahorro={real:+ctl.ahorro, sis:c.saldoAhorro, dif:(+ctl.ahorro)-c.saldoAhorro};
+  if(ctl.difAhorro!==null && ctl.difAhorro!==undefined && isFinite(+ctl.difAhorro)){
+    r.ahorro={real:+ctl.ahorro, sis:+ctl.sisAhorro, dif:+ctl.difAhorro};
     if(r.ahorro.dif!==0) r.hay=true;
   }
   return r;
+}
+/* Cuántos movimientos registraste después de la última revisión. */
+function movimientosDesdeControl(){
+  var t=+(state.control||{}).fecha||0;
+  if(!t) return 0;
+  return (state.movimientos||[]).filter(function(m){ return (+m.actualizado||0)>t; }).length;
 }
 function diasDesdeControl(){
   var t=+(state.control||{}).fecha||0;
@@ -2050,17 +2061,22 @@ function bannerControl(){
       + '<span>Anota lo que muestra tu banco y el sistema te avisará cuando algo no cuadre.</span></div>'
       + '<button class="btn sm" id="ctl_abrir">Comenzar</button></div>';
   }
+  var cuando=(dias===0?'hoy':'hace '+dias+' día'+(dias===1?'':'s'));
   if(!d.hay){
-    return '<div class="ctlban ok"><div class="ctlban-txt"><strong>✓ Saldos cuadrados</strong>'
-      + '<span>Verificado hace '+(dias===0?'menos de un día':dias+' día'+(dias===1?'':'s'))
-      + (dias!==null&&dias>7?' · conviene volver a revisar':'')+'</span></div>'
-      + '<button class="btn sec sm" id="ctl_abrir">Revisar</button></div>';
+    var extra = d.nuevos
+      ? 'Desde entonces registraste '+d.nuevos+' movimiento'+(d.nuevos===1?'':'s')+'. Vuelve a revisar tu banco para confirmar que sigue cuadrando.'
+      : 'Sin movimientos nuevos desde entonces.';
+    return '<div class="ctlban '+(d.nuevos>0&&dias>=3?'aviso':'ok')+'"><div class="ctlban-txt">'
+      + '<strong>✓ Cuadrado '+cuando+'</strong><span>'+extra+'</span></div>'
+      + '<button class="btn sec sm" id="ctl_abrir">Revisar de nuevo</button></div>';
   }
   var p=[];
   if(d.banco&&d.banco.dif!==0) p.push('Cuenta bancaria <b>'+(d.banco.dif>0?'+':'−')+money(Math.abs(d.banco.dif))+'</b>');
   if(d.ahorro&&d.ahorro.dif!==0) p.push('Ahorro <b>'+(d.ahorro.dif>0?'+':'−')+money(Math.abs(d.ahorro.dif))+'</b>');
-  return '<div class="ctlban alerta"><div class="ctlban-txt"><strong>⚠ Hay un descuadre</strong>'
-    + '<span>'+p.join(' · ')+'</span></div>'
+  return '<div class="ctlban alerta"><div class="ctlban-txt"><strong>⚠ Descuadre detectado '+cuando+'</strong>'
+    + '<span>'+p.join(' · ')
+    + (d.nuevos?'<br>Registraste '+d.nuevos+' movimiento'+(d.nuevos===1?'':'s')+' después de esa revisión, así que la cifra de hoy será distinta.':'')
+    + '</span></div>'
     + '<button class="btn sm" id="ctl_abrir">Ver detalle</button></div>';
 }
 function abrirControl(){
@@ -2149,9 +2165,13 @@ function pintarControl(){
 function guardarControl(){
   var rb=parseMonto(document.getElementById('ctl_banco').value);
   var ra=parseMonto(document.getElementById('ctl_ahorro').value);
+  var c=calc(state.year);
   state.control={ fecha:Date.now(),
     banco: isFinite(rb)?rb:null,
-    ahorro: isFinite(ra)?ra:null };
+    ahorro: isFinite(ra)?ra:null,
+    sisBanco: c.saldoBanco, sisAhorro: c.saldoAhorro,
+    difBanco: isFinite(rb)?(rb-c.saldoBanco):null,
+    difAhorro: isFinite(ra)?(ra-c.saldoAhorro):null };
   marcarConfig('disp'); save(); renderAll();
 }
 function initControl(){
