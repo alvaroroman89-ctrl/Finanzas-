@@ -107,6 +107,10 @@
     .ctlban{display:flex;align-items:center;gap:14px}
     .ctlban button{width:auto;margin-top:0;flex:none}
   }
+  .ctl-guia{font-size:12.5px;color:var(--muted);background:var(--save-bg);border:1px solid #D3E0F1;border-radius:var(--r-sm);padding:10px 12px;line-height:1.45}
+  .ctl-guia strong{color:var(--ink)}
+  .ctl-hint{display:block;font-size:11.5px;color:var(--muted);margin-top:5px}
+  .ctl-hint b{color:var(--ink)}
   .ctl-item{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 13px;margin-bottom:10px}
   .ctl-item.ok{background:var(--in-bg);border-color:#BFE3CE}
   .ctl-item.mal{background:var(--out-bg);border-color:#EFC5B8}
@@ -506,10 +510,13 @@
       <button class="btn sec sm" id="ctl_cerrar">Cerrar</button>
     </div>
     <div class="modal-body">
-      <div class="field"><label class="fl" for="ctl_banco">Saldo en tu cuenta bancaria</label>
-        <input type="text" inputmode="numeric" id="ctl_banco" placeholder="Ej: 16.456"></div>
-      <div class="field"><label class="fl" for="ctl_ahorro">Saldo en tu cuenta de ahorro</label>
-        <input type="text" inputmode="numeric" id="ctl_ahorro" placeholder="Ej: 3.986.166"></div>
+      <div class="full ctl-guia">Copia estos dos números <strong>desde la app de tu banco</strong>, no desde esta pantalla.</div>
+      <div class="field full"><label class="fl" for="ctl_banco">Saldo de tu cuenta corriente / vista, según el banco</label>
+        <input type="text" inputmode="numeric" id="ctl_banco" placeholder="Ej: 612.626">
+        <span class="ctl-hint" id="ctl_h1"></span></div>
+      <div class="field full"><label class="fl" for="ctl_ahorro">Saldo de tu cuenta de ahorro, según el banco</label>
+        <input type="text" inputmode="numeric" id="ctl_ahorro" placeholder="Ej: 3.564.411">
+        <span class="ctl-hint" id="ctl_h2"></span></div>
       <div class="full" id="ctl_out"></div>
     </div>
     <div class="modal-foot">
@@ -650,7 +657,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="4.0", APP_FECHA="03-08-2026";
+var APP_VERSION="4.2", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -2085,6 +2092,27 @@ function pintarControl(){
       + '<span class="ctl-acc"><button class="btn sm" data-ctlmov="'+cual+'|'+dif+'">Registrar la diferencia</button>'
       + '<button class="btn sec sm" data-ctlaj="'+cual+'|'+dif+'">Ajustar saldo inicial</button></span></div>';
   }
+  /* Confusión frecuente: copiar el "Sueldo disponible" de esta misma pantalla
+     en vez del saldo que muestra el banco. La diferencia sería justo el
+     efectivo menos la tarjeta, así que se detecta y se avisa. */
+  /* Caso frecuente: la persona registra todo mirando la cartola, así que cada
+     movimiento ya pasó por el banco aunque lleve etiqueta Efectivo o Crédito.
+     Se detecta porque el saldo informado coincide con el disponible total. */
+  if(isFinite(rb) && rb===c.saldoDisp && rb!==c.saldoBanco){
+    h+='<div class="savings-note" style="border-left-color:var(--in);background:var(--in-bg)">'
+     + '<strong>El banco coincide con tu disponible total.</strong> Eso significa que todos tus movimientos '
+     + 'pasan por la cuenta, aunque algunos estén marcados como Efectivo o Crédito. '
+     + 'Con un toque los reclasifico y quedas cuadrado en <b>'+money(c.saldoDisp)+'</b>.'
+     + '<div style="margin-top:10px"><button class="btn sm" id="ctl_todobanco">Todos mis movimientos pasan por el banco</button></div>'
+     + '</div>';
+  }
+  if(false){
+    h+='<div class="savings-note" style="border-left-color:var(--back);background:var(--back-bg)">'
+     + '<strong>Ojo:</strong> ese es el <b>Sueldo disponible</b> que calcula esta app ('+money(c.saldoDisp)+'), '
+     + 'no el saldo de tu cuenta bancaria. Incluye tu efectivo y descuenta la tarjeta.<br>'
+     + 'Aquí va lo que muestra la app de tu banco. Según el sistema, deberías ver <b>'+money(c.saldoBanco)+'</b>.'
+     + '</div>';
+  }
   h+=bloque('Cuenta bancaria',rb,c.saldoBanco,'disp');
   h+=bloque('Cuenta de ahorro',ra,c.saldoAhorro,'aho');
   if(!h) h='<div class="cap">Escribe al menos un saldo para comparar.</div>';
@@ -2092,7 +2120,17 @@ function pintarControl(){
     h+='<div class="savings-note">Tu disponible total es '+money(c.saldoDisp)+', pero en el banco tienes '
      + money(c.saldoBanco)+'. La diferencia es tu efectivo y lo comprometido en la tarjeta: eso es normal y no es un descuadre.</div>';
   }
+  var h1=document.getElementById('ctl_h1'), h2=document.getElementById('ctl_h2');
+  if(h1) h1.innerHTML='Según el sistema deberías ver <b>'+money(c.saldoBanco)+'</b>';
+  if(h2) h2.innerHTML='Según el sistema deberías ver <b>'+money(c.saldoAhorro)+'</b>';
   out.innerHTML=h;
+  var tb=document.getElementById('ctl_todobanco');
+  if(tb) tb.addEventListener('click',function(){
+    if(!state.mediosTipo) state.mediosTipo={};
+    (state.medios||[]).forEach(function(md){ state.mediosTipo[md]='banco'; });
+    marcarConfig('med'); save(); renderAll(); pintarControl();
+    toast('Listo · ahora el saldo bancario incluye todos tus movimientos');
+  });
   out.querySelectorAll('[data-ctlmov]').forEach(function(b){
     b.addEventListener('click',function(){
       var p=b.getAttribute('data-ctlmov').split('|');
