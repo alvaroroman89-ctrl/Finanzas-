@@ -670,7 +670,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="4.6", APP_FECHA="03-08-2026";
+var APP_VERSION="4.7", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -2171,9 +2171,19 @@ function conciliacion(cual){
     items.push({fecha:isoLocal(new Date(a.fecha)),desc:a.motivo,tipo:'AJUSTE',ef:+a.delta||0,ts:+a.fecha||0,aj:true});
   });
   items.sort(function(x,y){ return x.ts-y.ts; });
+  /* FIX: antes el saldo esperado se calculaba sumando los ítems listados. Pero
+     un movimiento EDITADO aparece como "nuevo" aunque ya estuviera incluido en
+     el saldo informado, y se restaba dos veces. El cambio real se mide contra
+     el saldo que el sistema tenía al momento de la revisión. */
+  var c=calc(state.year);
+  var ahora=(cual==='disp')?c.saldoBanco:c.saldoAhorro;
+  var antes=(cual==='disp')?+(state.control||{}).sisBanco:+(state.control||{}).sisAhorro;
+  var cambio=isFinite(antes)?(ahora-antes):items.reduce(function(a,b){return a+b.ef;},0);
   var run=base;
   items.forEach(function(it){ run+=it.ef; it.saldo=run; });
-  return {base:base, desde:desde, items:items, esperado:run};
+  var sumaItems=items.reduce(function(a,b){return a+b.ef;},0);
+  return {base:base, desde:desde, items:items, esperado:base+cambio,
+          cambio:cambio, sumaItems:sumaItems, editados:(sumaItems!==cambio)};
 }
 function tablaConciliacion(cual,real){
   var co=conciliacion(cual);
@@ -2187,6 +2197,10 @@ function tablaConciliacion(cual,real){
       + (it.aj?' <span class="conc-tag">ajuste</span>':'')+'</td>'
       + '<td class="num" style="color:'+(it.ef<0?'var(--out)':'var(--in)')+'">'+(it.ef>0?'+':'')+money(it.ef)+'</td></tr>';
   });
+  if(co.editados){
+    h+='<tr class="conc-aj"><td>Ya estaban contados (los editaste)</td><td class="num">'
+     + money(co.cambio-co.sumaItems)+'</td></tr>';
+  }
   h+='<tr class="conc-fin"><td>El sistema espera</td><td class="num">'+money(co.esperado)+'</td></tr>';
   if(isFinite(real)){
     h+='<tr class="conc-real"><td>El banco dice</td><td class="num">'+money(real)+'</td></tr>';
@@ -2197,7 +2211,9 @@ function tablaConciliacion(cual,real){
   if(isFinite(real) && real!==co.esperado){
     h+='<div class="cap" style="margin-top:9px">Compara esta lista con la cartola del BCI. '
      + 'Si en el banco hay un cargo que no está acá, ese es el que falta registrar. '
-     + 'Los marcados como <b>ajuste</b> no vienen del banco: los hiciste a mano.</div>';
+     + 'Los marcados como <b>ajuste</b> no vienen del banco: los hiciste a mano.'
+     + (co.editados?'<br>Algunos de la lista ya estaban incluidos en el saldo informado (los editaste después), por eso no se restan de nuevo.':'')
+     + '</div>';
   }
   return h+'</div></details>';
 }
@@ -2248,6 +2264,20 @@ function pintarControl(){
       + 'En la cartola del banco, el <b>saldo</b> es el número grande de arriba; los de abajo son las transacciones.'
       + '</div>';
   }
+  var ctlPrev=state.control||{};
+  function avisaViejo(v,prev,nuevos,nombre,sisAntes,sisAhora){
+    if(!isFinite(v)||!isFinite(+prev)||v!==+prev||!nuevos) return '';
+    /* Si el saldo del sistema para esa cuenta no cambió, repetir el mismo
+       número es correcto y no hay nada que advertir. */
+    if(isFinite(+sisAntes) && (+sisAntes)===sisAhora) return '';
+    return '<div class="savings-note" style="border-left-color:var(--back);background:var(--back-bg)">'
+      + '<strong>Ojo:</strong> '+money(v)+' es el mismo saldo que informaste la última vez para tu '+nombre+', '
+      + 'y desde entonces registraste '+nuevos+' movimiento'+(nuevos===1?'':'s')+'. '
+      + 'Vuelve a mirar la app del banco: lo más probable es que ese número ya haya cambiado.</div>';
+  }
+  var _dif=difControl();
+  h+=avisaViejo(rb,ctlPrev.banco,_dif.nuevos,'cuenta bancaria',ctlPrev.sisBanco,c.saldoBanco);
+  h+=avisaViejo(ra,ctlPrev.ahorro,_dif.nuevos,'cuenta de ahorro',ctlPrev.sisAhorro,c.saldoAhorro);
   h+=avisaMonto(rb,'disp');
   h+=avisaMonto(ra,'aho');
   if(isFinite(rb) && rb===c.saldoDisp && rb!==c.saldoBanco){
