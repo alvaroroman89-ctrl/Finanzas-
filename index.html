@@ -670,7 +670,7 @@ function esMedioBanco(m){ return medioTipo(m)==='banco'; }
 function esMedioEfectivo(m){ return medioTipo(m)==='efectivo'; }
 function esMedioCredito(m){ return medioTipo(m)==='credito'; }
 function esRetiro(t){ return t==='Retiro ahorro'||t==='Traspaso a disponible'||t==='Cuenta de ahorro a cuenta corriente'; }
-var APP_VERSION="4.5", APP_FECHA="03-08-2026";
+var APP_VERSION="4.6", APP_FECHA="03-08-2026";
 var KEY="finanzas_personales_v1";
 var state=load();
 
@@ -693,13 +693,19 @@ function normalize(s){
   s.medios=s.medios||DEFAULT.medios.slice();
   s.movimientos=s.movimientos||[];
   s.borrados=s.borrados||[];
-  s.cierres=Array.isArray(s.cierres)?s.cierres:[];
+  /* Blindaje: una fila nula o sin mes en las actas (por una fusión a medias o
+     un respaldo dañado) hacía caer toda la app al dibujar. Se descartan. */
+  s.cierres=(Array.isArray(s.cierres)?s.cierres:[]).filter(function(c){
+    return c && typeof c==='object' && typeof c.mes==='string' && /^\d{4}-\d{2}$/.test(c.mes);
+  });
   s.configActualizado=+s.configActualizado||0;
   var base=s.configActualizado;
   if(!s.cfgTs||typeof s.cfgTs!=='object') s.cfgTs={};
   ['disp','aho','cats','med','cierres'].forEach(function(k){ s.cfgTs[k]=+s.cfgTs[k]||base; });
   s._esNuevo=!!s._esNuevo;
-  s.ajustes=Array.isArray(s.ajustes)?s.ajustes:[];
+  s.ajustes=(Array.isArray(s.ajustes)?s.ajustes:[]).filter(function(a){
+    return a && typeof a==='object' && isFinite(+a.delta) && (a.cual==='disp'||a.cual==='aho');
+  });
   s.control=(s.control&&typeof s.control==='object')?s.control:{fecha:0,banco:null,ahorro:null};
   s.mediosTipo=(s.mediosTipo&&typeof s.mediosTipo==='object')?s.mediosTipo:{};
   s.avisoDuplicado=(s.avisoDuplicado==='amplio')?'amplio':'exacto';
@@ -1951,7 +1957,7 @@ function archivarComprobantes(meses){
    borran: el acta es un registro histórico que queda junto a ellos.
    ================================================================= */
 function claveMes(a,m){ return a+'-'+('0'+m).slice(-2); }
-function cierreDe(a,m){ var k=claveMes(a,m); return (state.cierres||[]).find(function(c){return c.mes===k;})||null; }
+function cierreDe(a,m){ var k=claveMes(a,m); return (state.cierres||[]).find(function(c){return c&&c.mes===k;})||null; }
 function mesEstaCerrado(fecha){
   if(!fechaValida(fecha)) return null;
   return cierreDe(+fecha.slice(0,4), +fecha.slice(5,7));
@@ -2986,7 +2992,9 @@ function syncAplicar(resp){
        otro en el teléfono deben convivir, nunca perderse. */
     if(Array.isArray(c.cierres)){
       var hay={}; (state.cierres||[]).forEach(function(x){ hay[x.mes]=1; });
-      var nuevas=c.cierres.filter(function(x){ return x && x.mes && !hay[x.mes]; });
+      var nuevas=c.cierres.filter(function(x){
+        return x && typeof x==='object' && typeof x.mes==='string' && /^\d{4}-\d{2}$/.test(x.mes) && !hay[x.mes];
+      });
       if(nuevas.length){
         state.cierres=(state.cierres||[]).concat(nuevas).sort(function(x,y){return x.mes<y.mes?1:-1;});
         cambios++;
